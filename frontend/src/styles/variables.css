@@ -1,0 +1,23 @@
+:root {
+  --clop-black: #050505;
+  --clop-black-soft: #0d0d0d;
+
+  --clop-gold: #d4a72c;
+  --clop-gold-light: #f2c94c;
+  --clop-gold-dark: #9c7414;
+
+  --clop-white: #ffffff;
+  --clop-gray: #a1a1aa;
+  --clop-gray-dark: #27272a;
+
+  --clop-blue: #172b4d;
+
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #eab308;
+
+  --clop-sidebar-active-bg: rgba(212, 167, 44, 0.12);
+  --clop-card-bg: #0d0d0d;
+  --clop-card-border: rgba(212, 167, 44, 0.15);
+  --clop-card-radius: 12px;
+}
