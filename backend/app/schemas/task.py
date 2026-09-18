@@ -36,6 +36,7 @@ class TaskStatusUpdate(BaseModel):
         "REJECTED",
         "OVERDUE",
         "CANCELLED",
+        "DECLINED",
     ]
 
 
@@ -111,6 +112,7 @@ class TaskOut(BaseModel):
 class TaskDetail(TaskOut):
     created_by_nome: str | None = None
     assigned_to_nome: str | None = None
+    assigned_to_foto: str | None = None
     department_nome: str | None = None
     is_overdue: bool = False
 

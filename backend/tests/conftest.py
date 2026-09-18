@@ -44,6 +44,7 @@ def create_user(
 
 
 def delete_user(db, user_id: int) -> None:
+    db.query(Department).filter(Department.manager_id == user_id).update({"manager_id": None})
     db.query(AuditLog).filter(AuditLog.user_id == user_id).delete()
     from app.models.attachment import Attachment
     from app.models.notification import Notification

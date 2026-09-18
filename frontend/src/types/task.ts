@@ -11,6 +11,7 @@ export type TaskStatus =
   | 'REJECTED'
   | 'OVERDUE'
   | 'CANCELLED'
+  | 'DECLINED'
 
 export interface Task {
   id: number

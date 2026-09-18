@@ -41,6 +41,7 @@ export default function Modal({
       }}
     >
       <div
+        className="clop-modal"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--clop-card-bg)',

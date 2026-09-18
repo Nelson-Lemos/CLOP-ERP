@@ -156,10 +156,10 @@ export default function Employees() {
   return (
     <div>
       <PageHeader
-        title="Funcionários"
+        title={isManager ? 'Minha Equipe' : 'Funcionários'}
         subtitle={canManage ? `Total: ${visible.length}` : 'A sua ficha'}
         actions={
-          canManage ? (
+          isCeo ? (
             <div style={{ display: 'flex', gap: '0.6rem' }}>
               <input
                 placeholder="Pesquisar…"
@@ -169,6 +169,13 @@ export default function Employees() {
               />
               <PrimaryButton onClick={openCreate}>Novo funcionário</PrimaryButton>
             </div>
+          ) : canManage ? (
+            <input
+              placeholder="Pesquisar…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ ...inputStyle, minWidth: 200 }}
+            />
           ) : undefined
         }
       />
@@ -207,7 +214,7 @@ export default function Employees() {
                       <StatusBadge value={u.estado} />
                     </td>
                     <td style={tdStyle}>
-                      {canManage && (
+                      {isCeo && (
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                           <GhostButton onClick={() => openEdit(u)}>Editar</GhostButton>
                           <DangerButton onClick={() => void toggleStatus(u)}>{u.estado === 'ACTIVE' ? 'Desativar' : 'Ativar'}</DangerButton>

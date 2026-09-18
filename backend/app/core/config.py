@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CORS_ORIGINS: str = "http://localhost:5173"
     UPLOAD_DIR: str = "uploads"
+    DEFAULT_AVATAR: str = "/branding/avatar-default.svg"
     OVERDUE_SCAN_INTERVAL_SECONDS: int = 120
 
     SEED_ADMIN_EMAIL: str = "admin@clop.academy"

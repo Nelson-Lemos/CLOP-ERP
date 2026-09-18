@@ -35,6 +35,7 @@ def seed() -> None:
                 cargo="CEO",
                 role=UserRole.CEO,
                 estado=UserStatus.ACTIVE,
+                foto=settings.DEFAULT_AVATAR,
             )
             db.add(admin)
             print(f"CEO Admin criado: {email}")

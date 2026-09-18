@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -11,6 +13,10 @@ from app.routers import audit, auth, dashboard, departments, notifications, prod
 from app.services.task_service import mark_overdue_tasks
 
 logger = logging.getLogger("clop")
+
+UPLOAD_ROOT = Path(settings.UPLOAD_DIR)
+UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+(UPLOAD_ROOT / "photos").mkdir(parents=True, exist_ok=True)
 
 
 async def _overdue_loop() -> None:
@@ -72,6 +78,8 @@ app.include_router(productivity.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
+
+app.mount("/api/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 
 
 @app.get("/", tags=["Root"])

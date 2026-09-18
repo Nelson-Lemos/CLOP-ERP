@@ -2,8 +2,8 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import type { UserRole } from '../../types/user'
 
-export default function ProtectedRoute({ roles }: { roles?: UserRole[] }) {
-  const { isAuthenticated, loading, user } = useAuth()
+export default function RoleRoute({ roles }: { roles: UserRole[] }) {
+  const { user, loading } = useAuth()
 
   if (loading) {
     return (
@@ -21,7 +21,6 @@ export default function ProtectedRoute({ roles }: { roles?: UserRole[] }) {
     )
   }
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (roles && user && !roles.includes(user.role)) return <Navigate to="/" replace />
+  if (!user || !roles.includes(user.role)) return <Navigate to="/" replace />
   return <Outlet />
 }

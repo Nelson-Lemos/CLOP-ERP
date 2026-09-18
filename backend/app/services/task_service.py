@@ -10,7 +10,7 @@ from app.models.task import (
     TaskStatus,
     TaskUpdate,
 )
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.services.notification_service import send_notification
 
 
@@ -83,11 +83,13 @@ def create_task(
     start_date: datetime | None,
     deadline: datetime | None,
 ) -> Task:
-    if actor.role == UserRole.MANAGER and assigned_to is not None:
+    if assigned_to is not None:
         assignee = db.get(User, assigned_to)
         if assignee is None:
             raise ValueError("Funcionário atribuído não encontrado")
-        if assignee.departamento_id != actor.departamento_id:
+        if assignee.estado != UserStatus.ACTIVE:
+            raise ValueError("Não é possível atribuir tarefas a um funcionário inativo")
+        if actor.role == UserRole.MANAGER and assignee.departamento_id != actor.departamento_id:
             raise PermissionError("Chefe só pode atribuir tarefas dentro do seu departamento")
 
     task = Task(
@@ -136,14 +138,25 @@ def create_task(
 def update_task_by_actor(db: Session, *, actor: User, task: Task, changes: dict) -> Task:
     for key, value in changes.items():
         if key == "assigned_to" and value != task.assigned_to:
-            if actor.role == UserRole.MANAGER and value is not None:
+            if value is not None:
                 new_assignee = db.get(User, value)
                 if new_assignee is None:
                     raise ValueError("Funcionário atribuído não encontrado")
-                if new_assignee.departamento_id != actor.departamento_id:
+                if new_assignee.estado != UserStatus.ACTIVE:
+                    raise ValueError("Não é possível atribuir tarefas a um funcionário inativo")
+                if actor.role == UserRole.MANAGER and new_assignee.departamento_id != actor.departamento_id:
                     raise PermissionError("Chefe só pode atribuir tarefas dentro do seu departamento")
-            if value is not None:
                 _add_history(db, task=task, author=actor.id, action="ASSIGN_TASK", description=f"Atribuída ao utilizador {value}")
+                send_notification(
+                    db,
+                    user_id=value,
+                    title="Nova tarefa atribuída",
+                    message=task.titulo,
+                    type="TASK_ASSIGNED",
+                )
+            if task.status == TaskStatus.DECLINED:
+                task.status = TaskStatus.PENDING
+                _add_history(db, task=task, author=actor.id, action="UPDATE_TASK", description="Tarefa reaberta após reatribuição")
         setattr(task, key, value)
     _add_history(db, task=task, author=actor.id, action="UPDATE_TASK", description="Tarefa atualizada")
     db.add(

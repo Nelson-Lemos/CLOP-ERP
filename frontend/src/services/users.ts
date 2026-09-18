@@ -47,3 +47,12 @@ export async function updateUserStatus(id: number, estado: UserStatus): Promise<
   const { data } = await api.patch<User>(`/users/${id}/status`, { estado })
   return data
 }
+
+export async function uploadUserPhoto(id: number, file: File): Promise<User> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<User>(`/users/${id}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}

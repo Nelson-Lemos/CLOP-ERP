@@ -10,6 +10,7 @@ const STATUS_META: Record<
   PENDING: { label: 'Pendente', color: 'var(--warning)', background: 'rgba(234,179,8,0.12)' },
   OVERDUE: { label: 'Atrasada', color: 'var(--danger)', background: 'rgba(220,38,38,0.12)' },
   REJECTED: { label: 'Rejeitada', color: 'var(--danger)', background: 'rgba(220,38,38,0.12)' },
+  DECLINED: { label: 'Recusada', color: 'var(--clop-gray)', background: 'rgba(161,161,170,0.12)' },
   SUBMITTED: { label: 'Submetida', color: 'var(--clop-gold)', background: 'rgba(212,167,44,0.12)' },
   UNDER_REVIEW: { label: 'Em revisão', color: 'var(--clop-gold)', background: 'rgba(212,167,44,0.12)' },
   CANCELLED: { label: 'Cancelada', color: 'var(--clop-gray)', background: 'rgba(161,161,170,0.12)' },
@@ -69,4 +70,5 @@ export const TASK_STATUSES: TaskStatus[] = [
   'REJECTED',
   'OVERDUE',
   'CANCELLED',
+  'DECLINED',
 ]

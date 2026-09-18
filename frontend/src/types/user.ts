@@ -15,4 +15,6 @@ export interface User {
   estado: UserStatus
   created_at: string
   updated_at: string
+  departamento_nome?: string | null
+  chefe_nome?: string | null
 }

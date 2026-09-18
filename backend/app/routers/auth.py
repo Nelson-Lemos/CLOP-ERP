@@ -6,11 +6,20 @@ from app.core.security import create_access_token, create_refresh_token, decode_
 from app.dependencies.auth import CurrentUser
 from app.models.audit import AuditAction, AuditLog
 from app.models.user import User, UserStatus
-from app.schemas.auth import AuthResponse, LoginRequest, RefreshRequest, TokenResponse
+from app.schemas.auth import AuthResponse, LoginRequest, MeOut, RefreshRequest, TokenResponse
 from app.schemas.user import UserOut
 from app.services.auth_service import authenticate_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _me_out(user: User) -> MeOut:
+    departamento = user.departamento
+    return MeOut(
+        **UserOut.model_validate(user).model_dump(),
+        departamento_nome=departamento.nome if departamento else None,
+        chefe_nome=departamento.manager.nome_completo if (departamento and departamento.manager) else None,
+    )
 
 
 def _login_audit(db: Session, user_id: int | None, request: Request) -> None:
@@ -38,7 +47,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
     _login_audit(db, user.id, request)
-    return AuthResponse(access_token=access_token, refresh_token=refresh_token, user=user)
+    return AuthResponse(access_token=access_token, refresh_token=refresh_token, user=_me_out(user))
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -65,6 +74,6 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
     )
 
 
-@router.get("/me", response_model=UserOut)
-def me(current_user: CurrentUser) -> UserOut:
-    return current_user
+@router.get("/me", response_model=MeOut)
+def me(current_user: CurrentUser) -> MeOut:
+    return _me_out(current_user)

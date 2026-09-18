@@ -77,6 +77,7 @@ export default function TaskDetails() {
 
   const assignedToMe = task?.assigned_to === authUser?.id
   const canStart = assignedToMe && (task?.status === 'PENDING' || task?.status === 'OVERDUE' || task?.status === 'REJECTED')
+  const canDecline = assignedToMe && (task?.status === 'PENDING' || task?.status === 'OVERDUE')
   const canSubmit = assignedToMe && (task?.status === 'IN_PROGRESS' || task?.status === 'PENDING' || task?.status === 'OVERDUE' || task?.status === 'REJECTED')
   const canReview =
     (task &&
@@ -159,7 +160,12 @@ export default function TaskDetails() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginTop: '1.25rem' }}>
             {canStart && (
               <GhostButton disabled={busy} onClick={() => run(() => updateTaskStatus(taskId, 'IN_PROGRESS'))}>
-                Iniciar tarefa
+                Aceitar
+              </GhostButton>
+            )}
+            {canDecline && (
+              <GhostButton disabled={busy} onClick={() => run(() => updateTaskStatus(taskId, 'DECLINED'))}>
+                Recusar
               </GhostButton>
             )}
             {assignedToMe && task.status === 'IN_PROGRESS' && (

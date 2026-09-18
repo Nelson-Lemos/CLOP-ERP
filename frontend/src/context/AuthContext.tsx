@@ -14,6 +14,7 @@ export interface AuthContextValue {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  refreshUser: () => Promise<void>
   isAuthenticated: boolean
 }
 
@@ -51,15 +52,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/login'
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    const me = await fetchMe()
+    setUser(me)
+  }, [])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       loading,
       login,
       logout,
+      refreshUser,
       isAuthenticated: user !== null,
     }),
-    [user, loading, login, logout],
+    [user, loading, login, logout, refreshUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

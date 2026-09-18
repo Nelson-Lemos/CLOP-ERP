@@ -29,6 +29,7 @@ class TaskStatus:
     REJECTED = "REJECTED"
     OVERDUE = "OVERDUE"
     CANCELLED = "CANCELLED"
+    DECLINED = "DECLINED"
 
 
 class Task(Base):

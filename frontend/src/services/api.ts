@@ -13,18 +13,18 @@ const REFRESH_KEY = 'clop_refresh_token'
 
 export const tokenStorage = {
   getAccess(): string | null {
-    return localStorage.getItem(TOKEN_KEY)
+    return sessionStorage.getItem(TOKEN_KEY)
   },
   getRefresh(): string | null {
-    return localStorage.getItem(REFRESH_KEY)
+    return sessionStorage.getItem(REFRESH_KEY)
   },
   set(access: string, refresh: string): void {
-    localStorage.setItem(TOKEN_KEY, access)
-    localStorage.setItem(REFRESH_KEY, refresh)
+    sessionStorage.setItem(TOKEN_KEY, access)
+    sessionStorage.setItem(REFRESH_KEY, refresh)
   },
   clear(): void {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(REFRESH_KEY)
   },
 }
 

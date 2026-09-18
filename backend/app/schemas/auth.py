@@ -18,5 +18,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class MeOut(UserOut):
+    departamento_nome: str | None = None
+    chefe_nome: str | None = None
+
+
 class AuthResponse(TokenResponse):
-    user: UserOut
+    user: MeOut

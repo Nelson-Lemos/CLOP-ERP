@@ -33,6 +33,7 @@ from app.schemas.task import (
 )
 from app.services import task_service
 from app.services.audit_service import record_audit
+from app.services.notification_service import send_notification
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -75,6 +76,7 @@ def _to_detail(db: Session, task: Task) -> TaskDetail:
         updated_at=task.updated_at,
         created_by_nome=(task.creator.nome_completo if task.creator else None),
         assigned_to_nome=(task.employee.nome_completo if task.employee else None),
+        assigned_to_foto=(task.employee.foto if task.employee else None),
         department_nome=(task.department.nome if task.department else None),
         is_overdue=task_service.is_task_overdue(task),
     )
@@ -198,9 +200,16 @@ def update_task_status(
     new_status = payload.status
 
     if current_user.role == UserRole.EMPLOYEE:
-        if new_status not in (TaskStatus.IN_PROGRESS,):
+        allowed = [TaskStatus.IN_PROGRESS]
+        if new_status == TaskStatus.DECLINED:
+            allowed = [TaskStatus.DECLINED]
+        if new_status not in allowed:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Funcionário não pode alterar este status")
-        if task.status not in (TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.REJECTED):
+        if new_status == TaskStatus.DECLINED:
+            allowed_from = (TaskStatus.PENDING, TaskStatus.OVERDUE)
+        else:
+            allowed_from = (TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.REJECTED)
+        if task.status not in allowed_from:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transição inválida")
         if task.assigned_to != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
@@ -212,12 +221,25 @@ def update_task_status(
     if new_status == TaskStatus.COMPLETED:
         task.progress = 100
         task.completed_at = task_service._now()
+
+    if new_status == TaskStatus.DECLINED:
+        send_notification(
+            db,
+            user_id=task.created_by,
+            title="Tarefa recusada",
+            message=f"\"{task.titulo}\" foi recusada pelo funcionário atribuído.",
+            type="TASK_DECLINED",
+        )
+        description = "Tarefa recusada pelo funcionário"
+    else:
+        description = f"Status alterado para {new_status}"
+
     db.add(
         TaskHistory(
             task_id=task.id,
             user_id=current_user.id,
             action="UPDATE_TASK",
-            description=f"Status alterado para {new_status}",
+            description=description,
         )
     )
     record_audit(db, user_id=current_user.id, action="UPDATE_TASK", entity="task", entity_id=task.id, request=request)
