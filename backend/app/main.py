@@ -9,9 +9,11 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.routers import audit, auth, dashboard, departments, notifications, productivity, reports, tasks, users
+from app.routers import audit, auth, dashboard, departments, notifications, productivity, reports, tasks, trading, users
+from app.services.bootstrap_service import run_startup_bootstrap
 from app.services.task_service import mark_overdue_tasks
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clop")
 
 UPLOAD_ROOT = Path(settings.UPLOAD_DIR)
@@ -40,6 +42,11 @@ def _run_overdue_scan() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(
+        "Origens CORS permitidas: %s",
+        ", ".join(settings.cors_origins_list) or "(nenhuma)",
+    )
+    await asyncio.to_thread(run_startup_bootstrap)
     task = asyncio.create_task(_overdue_loop())
     try:
         yield
@@ -78,6 +85,7 @@ app.include_router(productivity.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
+app.include_router(trading.router, prefix="/api")
 
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_ROOT), name="uploads")
 

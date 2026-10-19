@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { User } from '../types/user'
+import { ROLE_LABELS } from '../types/user'
 import type { TaskDetail } from '../types/task'
 import { getUser } from '../services/users'
 import { listTasks } from '../services/tasks'
@@ -8,14 +9,10 @@ import { getEmployeeProductivity } from '../services/dashboard'
 import type { ProductivityMetrics } from '../types/report'
 import { useAuth } from '../hooks/useAuth'
 import StatusBadge from '../components/ui/StatusBadge'
+import Avatar from '../components/ui/Avatar'
+import { mediaUrl } from '../services/api'
 import { EmptyState, ErrorState, LoadingState, PageHeader, ProgressBar, tdStyle, thStyle, tableStyle } from '../components/ui/common'
 import StatCard from '../components/ui/StatCard'
-
-const ROLE_LABELS: Record<string, string> = {
-  CEO: 'Administrador',
-  MANAGER: 'Chefe',
-  EMPLOYEE: 'Funcionário',
-}
 
 export default function EmployeeDetails() {
   const { id } = useParams()
@@ -73,6 +70,17 @@ export default function EmployeeDetails() {
           </div>
         }
       />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', marginBottom: '1.5rem' }}>
+        <a href={mediaUrl(user.foto)} target="_blank" rel="noreferrer" title="Ver fotografia em tamanho real">
+          <Avatar nome={user.nome_completo} foto={user.foto} size={160} />
+        </a>
+        <div>
+          <div style={{ color: 'var(--clop-white)', fontWeight: 600, fontSize: '1.05rem' }}>{user.nome_completo}</div>
+          <div style={{ color: 'var(--clop-gray)', fontSize: '0.85rem' }}>{user.cargo || ROLE_LABELS[user.role]}</div>
+          <div style={{ color: 'var(--clop-gray)', fontSize: '0.8rem', marginTop: '0.2rem' }}>{user.email}</div>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.5rem' }}>
         {cardMeta.map((c) => (

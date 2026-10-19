@@ -1,8 +1,9 @@
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -10,7 +11,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.dependencies.auth import CurrentUser
-from app.dependencies.permissions import require_ceo
+from app.dependencies.permissions import is_admin, require_admin
 from app.models.department import Department
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import UserCreate, UserOut, UserStatusUpdate, UserUpdate
@@ -18,13 +19,19 @@ from app.services.audit_service import record_audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-PHOTO_DIR = Path(settings.UPLOAD_DIR) / "photos"
 ALLOWED_PHOTO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+PHOTO_MIME_BY_EXTENSION = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 MAX_PHOTO_SIZE = 5 * 1024 * 1024
 
 
 def _assert_manager_dept(current_user: User, target_user: User) -> None:
-    if current_user.role == UserRole.CEO:
+    if is_admin(current_user):
         return
     if current_user.role == UserRole.MANAGER and current_user.departamento_id == target_user.departamento_id:
         return
@@ -41,8 +48,7 @@ def _get_user_or_404(db: Session, user_id: int) -> User:
 
 
 def _normalize_role(role: str) -> str:
-    valid = {UserRole.CEO, UserRole.MANAGER, UserRole.EMPLOYEE}
-    if role not in valid:
+    if role not in UserRole.all():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Role inválido: {role}")
     return role
 
@@ -91,7 +97,7 @@ def list_users(
 def create_user(
     payload: UserCreate,
     request: Request,
-    current_user: User = Depends(require_ceo),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> UserOut:
     email = payload.email.lower().strip()
@@ -107,6 +113,7 @@ def create_user(
         nome_completo=payload.nome_completo.strip(),
         email=email,
         password_hash=hash_password(payload.password),
+        password_changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         telefone=payload.telefone,
         cargo=payload.cargo,
         departamento_id=payload.departamento_id,
@@ -145,15 +152,27 @@ def update_user(
     db: Session = Depends(get_db),
 ) -> UserOut:
     target = _get_user_or_404(db, user_id)
+    data = payload.model_dump(exclude_unset=True)
 
-    if current_user.role == UserRole.EMPLOYEE:
-        if current_user.id != target.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
-        data = payload.model_dump(exclude_unset=True)
-        if set(data) - {"telefone", "password"}:
+    if data.get("password") is not None:
+        if current_user.id == target.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Use POST /api/auth/change-password para alterar a sua própria palavra-passe",
+            )
+        if not is_admin(current_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Funcionário só pode alterar telefone e palavra-passe",
+                detail="Sem permissão para redefinir a palavra-passe de outro utilizador",
+            )
+
+    if current_user.role in (UserRole.EMPLOYEE, UserRole.TRADING_LEADER):
+        if current_user.id != target.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+        if set(data) - {"telefone"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Funcionário só pode alterar o telefone",
             )
     elif current_user.role == UserRole.MANAGER:
         if current_user.id != target.id:
@@ -161,15 +180,13 @@ def update_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Chefe não pode editar funcionários",
             )
-        data = payload.model_dump(exclude_unset=True)
-        if set(data) - {"nome_completo", "email", "telefone", "cargo", "data_admissao", "password"}:
+        if set(data) - {"nome_completo", "email", "telefone", "cargo", "data_admissao"}:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Chefe não pode alterar função, estado ou departamento",
             )
     else:
         _assert_manager_dept(current_user, target)
-        data = payload.model_dump(exclude_unset=True)
 
     if "email" in data:
         data["email"] = data["email"].lower().strip()
@@ -186,15 +203,22 @@ def update_user(
         if dept is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Departamento não encontrado")
 
-    if "password" in data and data["password"] is not None:
-        data["password_hash"] = hash_password(data.pop("password"))
-    else:
-        data.pop("password", None)
+    password_reset = data.pop("password", None) is not None
+    if password_reset:
+        data["password_hash"] = hash_password(payload.password or "")
+        data["password_changed_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for key, value in data.items():
         setattr(target, key, value)
 
-    record_audit(db, user_id=current_user.id, action="UPDATE_USER", entity="user", entity_id=target.id, request=request)
+    record_audit(
+        db,
+        user_id=current_user.id,
+        action="CHANGE_PASSWORD" if password_reset else "UPDATE_USER",
+        entity="user",
+        entity_id=target.id,
+        request=request,
+    )
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)
@@ -205,7 +229,7 @@ def update_user_status(
     user_id: int,
     payload: UserStatusUpdate,
     request: Request,
-    current_user: User = Depends(require_ceo),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> UserOut:
     target = _get_user_or_404(db, user_id)
@@ -214,6 +238,21 @@ def update_user_status(
     db.commit()
     db.refresh(target)
     return UserOut.model_validate(target)
+
+
+@router.get("/{user_id}/photo")
+def get_user_photo(
+    user_id: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    target = db.get(User, user_id)
+    if target is None or not target.foto_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fotografia não encontrada")
+    return Response(
+        content=target.foto_data,
+        media_type=target.foto_mime or "image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/{user_id}/photo", response_model=UserOut)
@@ -226,7 +265,7 @@ async def upload_user_photo(
 ) -> UserOut:
     target = _get_user_or_404(db, user_id)
 
-    if current_user.id != target.id and current_user.role != UserRole.CEO:
+    if current_user.id != target.id and not is_admin(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
 
     filename = file.filename or "fotografia"
@@ -244,18 +283,9 @@ async def upload_user_photo(
             detail="A imagem não pode exceder 5 MB",
         )
 
-    PHOTO_DIR.mkdir(parents=True, exist_ok=True)
-    name = f"user_{target.id}_{int(time.time())}{suffix}"
-    path = PHOTO_DIR / name
-    path.write_bytes(content)
-
-    old = target.foto
-    if old and old.startswith("/api/uploads/photos/"):
-        old_file = PHOTO_DIR / old.rsplit("/", 1)[-1]
-        if old_file.is_file():
-            old_file.unlink(missing_ok=True)
-
-    target.foto = f"/api/uploads/photos/{name}"
+    target.foto_data = content
+    target.foto_mime = PHOTO_MIME_BY_EXTENSION.get(suffix, "image/jpeg")
+    target.foto = f"/api/users/{target.id}/photo?v={time.time_ns()}"
     record_audit(db, user_id=current_user.id, action="UPDATE_USER", entity="user", entity_id=target.id, request=request)
     db.commit()
     db.refresh(target)

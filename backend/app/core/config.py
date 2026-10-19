@@ -18,9 +18,17 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     DEFAULT_AVATAR: str = "/branding/avatar-default.svg"
     OVERDUE_SCAN_INTERVAL_SECONDS: int = 120
+    BOOTSTRAP_ON_STARTUP: bool = True
 
     SEED_ADMIN_EMAIL: str = "admin@clop.academy"
     SEED_ADMIN_PASSWORD: str = "ChangeMe_2026!"
+
+    SEED_PCA_NAME: str = "PCA Admin"
+    SEED_PCA_EMAIL: str = "pca@clop.academy"
+    SEED_PCA_PASSWORD: str = "ChangeMe_2026!"
+
+    TRADE_EVIDENCE_MAX_MB: int = 5
+    TRADE_EVIDENCE_LATE_DAYS: int = 1
 
     @property
     def cors_origins_list(self) -> list[str]:

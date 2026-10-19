@@ -124,6 +124,35 @@ def test_ceo_updates_employee() -> None:
         db.close()
 
 
+def test_user_photo_upload_persists_original_image() -> None:
+    db = SessionLocal()
+    emp = create_user(db, email="foto_persistente@teste.clop")
+    photo_content = b"original-photo-content" * 5000
+    try:
+        response = client.post(
+            f"/api/users/{emp.id}/photo",
+            files={"file": ("perfil.png", photo_content, "image/png")},
+            headers=auth(login("foto_persistente@teste.clop")),
+        )
+        assert response.status_code == 200, response.text
+        photo_url = response.json()["foto"]
+
+        refreshed_user = client.get(
+            f"/api/users/{emp.id}",
+            headers=auth(login("foto_persistente@teste.clop")),
+        )
+        assert refreshed_user.status_code == 200
+        assert refreshed_user.json()["foto"] == photo_url
+
+        image = client.get(photo_url)
+        assert image.status_code == 200
+        assert image.headers["content-type"] == "image/png"
+        assert image.content == photo_content
+    finally:
+        delete_user(db, emp.id)
+        db.close()
+
+
 def test_employee_cannot_change_own_role() -> None:
     db = SessionLocal()
     emp = create_user(db, email="rolefix@teste.clop")

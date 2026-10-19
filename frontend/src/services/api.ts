@@ -36,6 +36,20 @@ const api = axios.create({
   },
 })
 
+const API_ORIGIN = (() => {
+  const base = import.meta.env.VITE_API_URL || '/api'
+  return /^https?:\/\//i.test(base) ? base.replace(/\/api\/?$/, '') : ''
+})()
+
+export function mediaUrl(path?: string | null): string {
+  if (!path) return ''
+  const value = path.trim()
+  if (!value) return ''
+  if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) return value
+  if (value.startsWith('/api/')) return `${API_ORIGIN}${value}`
+  return value
+}
+
 let refreshPromise: Promise<string> | null = null
 
 async function performRefresh(): Promise<string> {
@@ -43,7 +57,7 @@ async function performRefresh(): Promise<string> {
   if (!refreshToken) {
     throw new Error('Sem refresh token')
   }
-  const { data } = await axios.post<TokenPair>('/api/auth/refresh', {
+  const { data } = await axios.post<TokenPair>(`${API_ORIGIN}/api/auth/refresh`, {
     refresh_token: refreshToken,
   })
   tokenStorage.set(data.access_token, data.refresh_token)

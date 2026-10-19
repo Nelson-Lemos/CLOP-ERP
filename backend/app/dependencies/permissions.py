@@ -5,6 +5,13 @@ from fastapi import HTTPException, status
 from app.dependencies.auth import CurrentUser
 from app.models.user import User, UserRole
 
+ADMIN_ROLES: tuple[str, ...] = UserRole.admin_roles()
+
+
+def is_admin(user: User | str) -> bool:
+    role = user.role if isinstance(user, User) else user
+    return UserRole.is_admin(role)
+
 
 def require_roles(*roles: str) -> Callable:
     def checker(current_user: CurrentUser) -> User:
@@ -18,5 +25,5 @@ def require_roles(*roles: str) -> Callable:
     return checker
 
 
-require_ceo = require_roles(UserRole.CEO)
-require_ceo_or_manager = require_roles(UserRole.CEO, UserRole.MANAGER)
+require_admin = require_roles(*ADMIN_ROLES)
+require_admin_or_manager = require_roles(*ADMIN_ROLES, UserRole.MANAGER)

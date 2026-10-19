@@ -126,10 +126,13 @@ MONTH_LABELS = [
 
 
 def department_breakdown(db: Session) -> list[dict]:
+    from app.core.departments import department_rank
     from app.models.department import Department
 
+    depts = db.query(Department).all()
+    depts.sort(key=lambda d: (department_rank(d.nome), d.id))
     rows = []
-    for dept in db.query(Department).all():
+    for dept in depts:
         m = compute_metrics(db, department_id=dept.id)
         rows.append({"id": dept.id, "nome": dept.nome, **m})
     return rows

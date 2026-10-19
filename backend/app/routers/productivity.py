@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import CurrentUser
+from app.dependencies.permissions import is_admin
 from app.models.user import User, UserRole
 from app.services import productivity_service as ps
 
@@ -18,7 +19,7 @@ def _parse_period(start: datetime | None, end: datetime | None):
 
 
 def _scoped_user(db: Session, current_user: User, user_id: int | None) -> User | None:
-    if current_user.role == UserRole.CEO:
+    if is_admin(current_user):
         if user_id is None:
             return None
         target = db.get(User, user_id)
@@ -44,7 +45,7 @@ def productivity_company(
     db: Session = Depends(get_db),
     current_user: CurrentUser = None,
 ):
-    if current_user.role != UserRole.CEO:
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
     start, end = _parse_period(start, end)
     return {

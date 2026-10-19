@@ -18,6 +18,7 @@ import type { TaskRejectPayload, TaskSubmitPayload } from '../types/task'
 import StatusBadge from '../components/ui/StatusBadge'
 import Modal from '../components/ui/Modal'
 import { useAuth } from '../hooks/useAuth'
+import { isAdminRole } from '../types/user'
 import {
   DangerButton,
   ErrorState,
@@ -81,7 +82,7 @@ export default function TaskDetails() {
   const canSubmit = assignedToMe && (task?.status === 'IN_PROGRESS' || task?.status === 'PENDING' || task?.status === 'OVERDUE' || task?.status === 'REJECTED')
   const canReview =
     (task &&
-      ((authUser?.role === 'CEO' && task.created_by !== authUser.id) ||
+      ((authUser && isAdminRole(authUser.role) && task.created_by !== authUser.id) ||
         (authUser?.role === 'MANAGER' && task.department_id === authUser.departamento_id && task.assigned_to !== authUser.id))) ||
     false
   const reviewable = task && (task.status === 'SUBMITTED' || task.status === 'UNDER_REVIEW')

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getAdminDashboard, getDepartmentDashboard, getEmployeeDashboard } from '../services/dashboard'
 import type { AdminDashboardData, DepartmentDashboardData, EmployeeDashboardData, MonthlyPoint } from '../types/report'
 import { useAuth } from '../hooks/useAuth'
+import { isAdminRole } from '../types/user'
 import StatCard from '../components/ui/StatCard'
 import { EmptyState, ErrorState, LoadingState, PageHeader, ProgressBar, tdStyle, thStyle, tableStyle } from '../components/ui/common'
 
@@ -311,7 +312,7 @@ function EmployeeDash() {
 export default function Dashboard() {
   const { user } = useAuth()
   if (!user) return null
-  if (user.role === 'CEO') return <AdminDashboard />
+  if (isAdminRole(user.role)) return <AdminDashboard />
   if (user.role === 'MANAGER') return <DepartmentDash />
   return <EmployeeDash />
 }

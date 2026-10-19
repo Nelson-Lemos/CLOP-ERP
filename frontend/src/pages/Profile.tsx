@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { User, UserRole } from '../types/user'
+import type { User } from '../types/user'
+import { isAdminRole, ROLE_LABELS } from '../types/user'
 import type { TaskDetail } from '../types/task'
 import type { Department } from '../types/department'
 import type { ProductivityMetrics } from '../types/report'
 import { getUser, updateUser, uploadUserPhoto } from '../services/users'
+import { changePassword } from '../services/auth'
 import { listDepartments } from '../services/departments'
 import { listTasks } from '../services/tasks'
 import { getEmployeeProductivity } from '../services/dashboard'
@@ -18,6 +20,7 @@ import {
   GhostButton,
   LoadingState,
   PageHeader,
+  PasswordInput,
   PrimaryButton,
   ProgressBar,
   inputStyle,
@@ -27,12 +30,6 @@ import {
   thStyle,
 } from '../components/ui/common'
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  CEO: 'Administrador',
-  MANAGER: 'Chefe de Departamento',
-  EMPLOYEE: 'Funcionário',
-}
-
 type EditableForm = {
   nome_completo: string
   email: string
@@ -40,12 +37,19 @@ type EditableForm = {
   cargo: string
   data_admissao: string
   departamento_id: string
-  password: string
 }
+
+type PasswordForm = {
+  senha_atual: string
+  nova_password: string
+  confirmar_password: string
+}
+
+const EMPTY_PASSWORD: PasswordForm = { senha_atual: '', nova_password: '', confirmar_password: '' }
 
 export default function Profile() {
   const { user: authUser, refreshUser } = useAuth()
-  const isCeo = authUser?.role === 'CEO'
+  const isAdmin = authUser ? isAdminRole(authUser.role) : false
 
   const [me, setMe] = useState<User | null>(null)
   const [metrics, setMetrics] = useState<ProductivityMetrics | null>(null)
@@ -55,6 +59,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
   const [form, setForm] = useState<EditableForm>({
@@ -64,8 +69,8 @@ export default function Profile() {
     cargo: '',
     data_admissao: '',
     departamento_id: '',
-    password: '',
   })
+  const [passwordForm, setPasswordForm] = useState<PasswordForm>(EMPTY_PASSWORD)
   const [photo, setPhoto] = useState<File | null>(null)
   const photoRef = useRef<HTMLInputElement>(null)
 
@@ -92,9 +97,8 @@ export default function Profile() {
           cargo: u.cargo ?? '',
           data_admissao: u.data_admissao ?? '',
           departamento_id: u.departamento_id ? String(u.departamento_id) : '',
-          password: '',
         })
-        if (isCeo) setDepartments(await listDepartments())
+        if (isAdmin) setDepartments(await listDepartments())
       } catch {
         if (active) setError('Não foi possível carregar o perfil.')
       } finally {
@@ -104,7 +108,7 @@ export default function Profile() {
     return () => {
       active = false
     }
-  }, [authUser, isCeo])
+  }, [authUser, isAdmin])
 
   if (loading) return <LoadingState />
   if (error || !me || !authUser) return <ErrorState message={error || 'Sem dados do perfil.'} onRetry={() => window.location.reload()} />
@@ -119,30 +123,48 @@ export default function Profile() {
       if (authUser.role === 'EMPLOYEE') {
         updated = await updateUser(authUser.id, {
           telefone: form.telefone.trim() || null,
-          password: form.password || undefined,
         })
       } else {
-        const payload: Record<string, unknown> = {}
-        if (isCeo) payload.departamento_id = form.departamento_id ? Number(form.departamento_id) : null
         updated = await updateUser(authUser.id, {
           nome_completo: form.nome_completo.trim(),
           email: form.email.trim(),
           telefone: form.telefone.trim() || null,
           cargo: form.cargo.trim() || null,
           data_admissao: form.data_admissao || null,
-          ...(isCeo ? payload : {}),
-          password: form.password || undefined,
+          ...(isAdmin ? { departamento_id: form.departamento_id ? Number(form.departamento_id) : null } : {}),
         })
       }
       setMe({ ...me, ...updated })
       await refreshUser()
-      setForm((f) => ({ ...f, password: '' }))
       setFeedback({ type: 'ok', text: 'Perfil atualizado com sucesso.' })
     } catch (e) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setFeedback({ type: 'error', text: typeof detail === 'string' ? detail : 'Erro ao guardar o perfil.' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const savePassword = async () => {
+    setChangingPassword(true)
+    setFeedback(null)
+    try {
+      await changePassword({
+        senha_atual: passwordForm.senha_atual,
+        nova_password: passwordForm.nova_password,
+        confirmar_password: passwordForm.confirmar_password,
+      })
+      setPasswordForm(EMPTY_PASSWORD)
+      setFeedback({
+        type: 'ok',
+        text: 'Palavra-passe alterada. As outras sessões foram encerradas.',
+      })
+      await refreshUser()
+    } catch (e) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setFeedback({ type: 'error', text: typeof detail === 'string' ? detail : 'Erro ao alterar a palavra-passe.' })
+    } finally {
+      setChangingPassword(false)
     }
   }
 
@@ -249,7 +271,7 @@ export default function Profile() {
             <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.95rem', marginTop: 0 }}>Editar perfil</h3>
             {authUser.role === 'EMPLOYEE' && (
               <p style={{ color: 'var(--clop-gray)', fontSize: '0.8rem', margin: '0 0 0.9rem' }}>
-                Como funcionário só pode alterar o telefone e a palavra-passe.
+                Como funcionário só pode alterar o telefone.
               </p>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
@@ -266,9 +288,6 @@ export default function Profile() {
               <FormField label="Telefone">
                 <input style={inputStyle} value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
               </FormField>
-              <FormField label="Nova palavra-passe">
-                <input style={inputStyle} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Deixar vazio para manter" />
-              </FormField>
               {authUser.role !== 'EMPLOYEE' && (
                 <>
                   <FormField label="Cargo">
@@ -277,7 +296,7 @@ export default function Profile() {
                   <FormField label="Data de admissão">
                     <input style={inputStyle} type="date" value={form.data_admissao} onChange={(e) => setForm({ ...form, data_admissao: e.target.value })} />
                   </FormField>
-                  {isCeo && (
+                  {isAdmin && (
                     <FormField label="Departamento">
                       <select style={selectStyle} value={form.departamento_id} onChange={(e) => setForm({ ...form, departamento_id: e.target.value })}>
                         <option value="">Sem departamento</option>
@@ -295,6 +314,62 @@ export default function Profile() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
               <PrimaryButton disabled={saving} onClick={() => void save()}>
                 {saving ? 'A guardar…' : 'Guardar alterações'}
+              </PrimaryButton>
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
+            <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.95rem', marginTop: 0 }}>Alterar palavra-passe</h3>
+            <p style={{ color: 'var(--clop-gray)', fontSize: '0.8rem', margin: '0 0 0.9rem' }}>
+              Mínimo 8 caracteres, com pelo menos uma letra e um número. Ao alterar, as sessões abertas noutros dispositivos são encerradas.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
+              <FormField label="Palavra-passe atual">
+                <PasswordInput
+                  style={inputStyle}
+                  autoComplete="current-password"
+                  value={passwordForm.senha_atual}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, senha_atual: e.target.value })}
+                />
+              </FormField>
+              <div />
+              <FormField label="Nova palavra-passe">
+                <PasswordInput
+                  style={inputStyle}
+                  autoComplete="new-password"
+                  value={passwordForm.nova_password}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, nova_password: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Confirmar nova palavra-passe">
+                <PasswordInput
+                  style={inputStyle}
+                  autoComplete="new-password"
+                  value={passwordForm.confirmar_password}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmar_password: e.target.value })}
+                />
+              </FormField>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '1.25rem',
+                gap: '1rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ color: 'var(--clop-gray)', fontSize: '0.75rem' }}>
+                {me.password_changed_at
+                  ? `Última alteração: ${new Date(me.password_changed_at).toLocaleString('pt-PT')}`
+                  : 'Palavra-passe definida na criação da conta.'}
+              </span>
+              <PrimaryButton
+                disabled={changingPassword || !passwordForm.senha_atual || !passwordForm.nova_password}
+                onClick={() => void savePassword()}
+              >
+                {changingPassword ? 'A alterar…' : 'Alterar palavra-passe'}
               </PrimaryButton>
             </div>
           </div>

@@ -16,6 +16,10 @@ import Reports from '../pages/Reports'
 import Notifications from '../pages/Notifications'
 import Audit from '../pages/Audit'
 import Profile from '../pages/Profile'
+import TradingChecklist from '../pages/TradingChecklist'
+import TradingJournal from '../pages/TradingJournal'
+import TradingAccount from '../pages/TradingAccount'
+import TradingReport from '../pages/TradingReport'
 
 export default function AppRoutes() {
   const { logout } = useAuth()
@@ -28,12 +32,12 @@ export default function AppRoutes() {
           <Route element={<Layout onLogout={logout} />}>
             <Route path="/" element={<Dashboard />} />
 
-            <Route element={<RoleRoute roles={['CEO', 'MANAGER']} />}>
+            <Route element={<RoleRoute roles={['CEO', 'PCA', 'MANAGER']} />}>
               <Route path="/employees" element={<Employees />} />
               <Route path="/employees/:id" element={<EmployeeDetails />} />
             </Route>
 
-            <Route element={<RoleRoute roles={['CEO']} />}>
+            <Route element={<RoleRoute roles={['CEO', 'PCA']} />}>
               <Route path="/departments" element={<Departments />} />
               <Route path="/departments/:id" element={<DepartmentDetails />} />
               <Route path="/audit" element={<Audit />} />
@@ -42,10 +46,14 @@ export default function AppRoutes() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/tasks/:id" element={<TaskDetails />} />
             <Route path="/productivity" element={<Productivity />} />
+            <Route path="/trading" element={<TradingChecklist />} />
+            <Route path="/trading/diario" element={<TradingJournal />} />
+            <Route path="/trading/conta" element={<TradingAccount />} />
+            <Route path="/trading/relatorio" element={<TradingReport />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
 
-            <Route element={<RoleRoute roles={['CEO', 'MANAGER']} />}>
+            <Route element={<RoleRoute roles={['CEO', 'PCA', 'MANAGER']} />}>
               <Route path="/delegar" element={<Tasks autoNew />} />
               <Route path="/reports" element={<Reports />} />
             </Route>

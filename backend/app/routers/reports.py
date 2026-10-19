@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import CurrentUser
+from app.dependencies.permissions import is_admin
 from app.models.user import User, UserRole
 from app.services import report_service
 
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 def _scoped(db: Session, current_user: User, user_id: int | None = None, department_id: int | None = None):
-    if current_user.role == UserRole.CEO:
+    if is_admin(current_user):
         if user_id is not None:
             target = db.get(User, user_id)
             if target is None:

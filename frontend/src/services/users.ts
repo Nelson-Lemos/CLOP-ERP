@@ -1,5 +1,5 @@
 import api from './api'
-import type { User, UserStatus } from '../types/user'
+import type { User, UserRole, UserStatus } from '../types/user'
 
 export interface UserCreatePayload {
   nome_completo: string
@@ -8,7 +8,7 @@ export interface UserCreatePayload {
   telefone?: string | null
   cargo?: string | null
   departamento_id?: number | null
-  role: 'CEO' | 'MANAGER' | 'EMPLOYEE'
+  role: UserRole
   data_admissao?: string | null
 }
 
@@ -19,7 +19,7 @@ export interface UserUpdatePayload {
   telefone?: string | null
   cargo?: string | null
   departamento_id?: number | null
-  role?: 'CEO' | 'MANAGER' | 'EMPLOYEE'
+  role?: UserRole
   data_admissao?: string | null
 }
 

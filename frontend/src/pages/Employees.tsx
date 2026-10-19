@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { User } from '../types/user'
+import { isAdminRole, ROLE_LABELS } from '../types/user'
 import type { Department } from '../types/department'
 import { listUsers, createUser, updateUser, updateUserStatus } from '../services/users'
 import { listDepartments } from '../services/departments'
 import Modal from '../components/ui/Modal'
+import Avatar from '../components/ui/Avatar'
 import { useAuth } from '../hooks/useAuth'
 import StatusBadge from '../components/ui/StatusBadge'
 import {
@@ -15,6 +17,7 @@ import {
   GhostButton,
   LoadingState,
   PageHeader,
+  PasswordInput,
   PrimaryButton,
   inputStyle,
   selectStyle,
@@ -22,12 +25,6 @@ import {
   tdStyle,
   thStyle,
 } from '../components/ui/common'
-
-const ROLE_LABELS: Record<string, string> = {
-  CEO: 'Administrador',
-  MANAGER: 'Chefe',
-  EMPLOYEE: 'Funcionário',
-}
 
 const EMPTY_FORM = {
   nome_completo: '',
@@ -42,9 +39,9 @@ const EMPTY_FORM = {
 
 export default function Employees() {
   const { user: authUser } = useAuth()
-  const isCeo = authUser?.role === 'CEO'
+  const isAdmin = authUser ? isAdminRole(authUser.role) : false
   const isManager = authUser?.role === 'MANAGER'
-  const canManage = isCeo || isManager
+  const canManage = isAdmin || isManager
 
   const [items, setItems] = useState<User[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -159,7 +156,7 @@ export default function Employees() {
         title={isManager ? 'Minha Equipe' : 'Funcionários'}
         subtitle={canManage ? `Total: ${visible.length}` : 'A sua ficha'}
         actions={
-          isCeo ? (
+          isAdmin ? (
             <div style={{ display: 'flex', gap: '0.6rem' }}>
               <input
                 placeholder="Pesquisar…"
@@ -202,9 +199,12 @@ export default function Employees() {
                 return (
                   <tr key={u.id}>
                     <td style={tdStyle}>
-                      <Link to={`/employees/${u.id}`} style={{ color: 'var(--clop-gold-light)', textDecoration: 'none' }}>
-                        {u.nome_completo}
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <Avatar nome={u.nome_completo} foto={u.foto} size={64} />
+                        <Link to={`/employees/${u.id}`} style={{ color: 'var(--clop-gold-light)', textDecoration: 'none' }}>
+                          {u.nome_completo}
+                        </Link>
+                      </div>
                     </td>
                     <td style={{ ...tdStyle, color: 'var(--clop-gray)' }}>{u.email}</td>
                     <td style={tdStyle}>{u.cargo || '—'}</td>
@@ -214,7 +214,7 @@ export default function Employees() {
                       <StatusBadge value={u.estado} />
                     </td>
                     <td style={tdStyle}>
-                      {isCeo && (
+                      {isAdmin && (
                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                           <GhostButton onClick={() => openEdit(u)}>Editar</GhostButton>
                           <DangerButton onClick={() => void toggleStatus(u)}>{u.estado === 'ACTIVE' ? 'Desativar' : 'Ativar'}</DangerButton>
@@ -239,7 +239,7 @@ export default function Employees() {
           </FormField>
           {!editing && (
             <FormField label="Palavra-passe">
-              <input style={inputStyle} type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              <PasswordInput style={inputStyle} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             </FormField>
           )}
           <FormField label="Telefone">
@@ -253,11 +253,12 @@ export default function Employees() {
               style={selectStyle}
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
-              disabled={!isCeo}
+              disabled={!isAdmin}
             >
               <option value="EMPLOYEE">Funcionário</option>
               <option value="MANAGER">Chefe</option>
-              {isCeo && <option value="CEO">Administrador</option>}
+              {isAdmin && <option value="CEO">CEO</option>}
+              {isAdmin && <option value="PCA">PCA</option>}
             </select>
           </FormField>
           <FormField label="Departamento">

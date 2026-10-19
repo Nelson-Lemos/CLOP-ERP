@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.departments import department_rank
 from app.dependencies.auth import CurrentUser
-from app.dependencies.permissions import require_ceo
+from app.dependencies.permissions import is_admin, require_admin
 from app.models.department import Department, DepartmentStatus
 from app.models.user import User, UserRole
 from app.schemas.department import DepartmentCreate, DepartmentDetail, DepartmentOut, DepartmentUpdate
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/departments", tags=["departments"])
 
 
 def _assert_dept_access(current_user: User, department_id: int) -> None:
-    if current_user.role == UserRole.CEO:
+    if is_admin(current_user):
         return
     if current_user.role == UserRole.MANAGER and current_user.departamento_id == department_id:
         return
@@ -62,7 +63,8 @@ def list_departments(
         pattern = f"%{q.strip()}%"
         query = query.filter(Department.nome.ilike(pattern))
 
-    depts = query.order_by(Department.id).all()
+    depts = query.all()
+    depts.sort(key=lambda d: (department_rank(d.nome), d.id))
     return [_enrich(d) for d in depts]
 
 
@@ -70,7 +72,7 @@ def list_departments(
 def create_department(
     payload: DepartmentCreate,
     request: Request,
-    current_user: User = Depends(require_ceo),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> DepartmentDetail:
     nome = payload.nome.strip()

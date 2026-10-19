@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Department } from '../types/department'
 import type { User } from '../types/user'
+import { isAdminRole } from '../types/user'
 import { listDepartments, createDepartment, updateDepartment } from '../services/departments'
 import { listUsers } from '../services/users'
 import { useAuth } from '../hooks/useAuth'
@@ -26,7 +27,7 @@ const EMPTY_FORM = { nome: '', descricao: '', manager_id: '' }
 
 export default function Departments() {
   const { user: authUser } = useAuth()
-  const isCeo = authUser?.role === 'CEO'
+  const isAdmin = authUser ? isAdminRole(authUser.role) : false
   const [items, setItems] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -101,7 +102,7 @@ export default function Departments() {
         title="Departamentos"
         subtitle={`Total: ${items.length}`}
         actions={
-          isCeo ? (
+          isAdmin ? (
             <>
               <PrimaryButton onClick={openCreate}>Novo departamento</PrimaryButton>
             </>
@@ -122,7 +123,7 @@ export default function Departments() {
                 <th style={thStyle}>Chefe</th>
                 <th style={thStyle}>Funcionários</th>
                 <th style={thStyle}>Estado</th>
-                {isCeo && <th style={thStyle}>Ações</th>}
+                {isAdmin && <th style={thStyle}>Ações</th>}
               </tr>
             </thead>
             <tbody>
@@ -142,7 +143,7 @@ export default function Departments() {
                   <td style={tdStyle}>
                     <StatusBadge value={d.estado} />
                   </td>
-                  {isCeo && (
+                  {isAdmin && (
                     <td style={tdStyle}>
                       <GhostButton onClick={() => openEdit(d)}>Editar</GhostButton>
                     </td>
@@ -166,7 +167,7 @@ export default function Departments() {
             <select style={selectStyle} value={form.manager_id} onChange={(e) => setForm({ ...form, manager_id: e.target.value })}>
               <option value="">Sem chefe</option>
               {users
-                .filter((u) => u.role === 'MANAGER' || u.role === 'CEO')
+                .filter((u) => u.role === 'MANAGER' || isAdminRole(u.role))
                 .map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.nome_completo}

@@ -267,7 +267,7 @@ def _require_reviewable(task: Task) -> None:
 
 
 def can_review(actor: User, task: Task) -> bool:
-    if actor.role == UserRole.CEO:
+    if UserRole.is_admin(actor.role):
         return True
     if actor.role == UserRole.MANAGER:
         return actor.departamento_id == task.department_id
@@ -275,7 +275,7 @@ def can_review(actor: User, task: Task) -> bool:
 
 
 def can_manage(actor: User, task: Task) -> bool:
-    if actor.role == UserRole.CEO:
+    if UserRole.is_admin(actor.role):
         return True
     if actor.role == UserRole.MANAGER:
         return actor.departamento_id == task.department_id

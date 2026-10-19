@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import CurrentUser
+from app.dependencies.permissions import is_admin
 from app.models.task import Task, TaskStatus
 from app.models.user import User, UserRole
 from app.services import productivity_service as ps
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/admin")
 def dashboard_admin(db: Session = Depends(get_db), current_user: CurrentUser = None):
-    if current_user.role != UserRole.CEO:
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
 
     from app.models.department import Department
@@ -29,7 +30,7 @@ def dashboard_admin(db: Session = Depends(get_db), current_user: CurrentUser = N
     def statuses(items, statuses):
         return [t for t in items if t.status in statuses]
 
-    employees = db.query(User).filter(User.role != UserRole.CEO).all()
+    employees = db.query(User).filter(~User.role.in_(UserRole.admin_roles())).all()
 
     return {
         "total_employees": len(employees),

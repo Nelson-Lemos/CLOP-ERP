@@ -4,6 +4,7 @@ import type { ReportData } from '../types/report'
 import { getCompanyReport, getDepartmentReport, getPeriodReport, reportPdfUrl } from '../services/reports'
 import { listDepartments } from '../services/departments'
 import { useAuth } from '../hooks/useAuth'
+import { isAdminRole } from '../types/user'
 import StatusBadge from '../components/ui/StatusBadge'
 import {
   ErrorState,
@@ -84,7 +85,7 @@ export default function Reports() {
       />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '1.25rem', background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1rem' }}>
-        {authUser?.role === 'CEO' && (
+        {authUser && isAdminRole(authUser.role) && (
           <>
             <select style={selectStyle} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
               <option value="period">Período</option>

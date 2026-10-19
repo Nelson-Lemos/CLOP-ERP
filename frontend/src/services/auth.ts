@@ -13,10 +13,21 @@ export interface AuthData {
   user: User
 }
 
+export interface ChangePasswordData {
+  senha_atual: string
+  nova_password: string
+  confirmar_password: string
+}
+
 export async function login(email: string, password: string): Promise<AuthData> {
   const { data } = await api.post<AuthData>('/auth/login', { email, password })
   tokenStorage.set(data.access_token, data.refresh_token)
   return data
+}
+
+export async function changePassword(payload: ChangePasswordData): Promise<void> {
+  const { data } = await api.post<Omit<AuthData, 'user'>>('/auth/change-password', payload)
+  tokenStorage.set(data.access_token, data.refresh_token)
 }
 
 export async function fetchMe(): Promise<AuthData['user']> {
@@ -32,4 +43,4 @@ export function isAuthenticated(): boolean {
   return tokenStorage.getAccess() !== null
 }
 
-export default { login, fetchMe, logout, isAuthenticated }
+export default { login, changePassword, fetchMe, logout, isAuthenticated }

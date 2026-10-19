@@ -12,6 +12,12 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordRequest(BaseModel):
+    senha_atual: str = Field(min_length=1, max_length=128)
+    nova_password: str = Field(min_length=8, max_length=128)
+    confirmar_password: str = Field(min_length=1, max_length=128)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

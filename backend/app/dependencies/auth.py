@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User, UserStatus
+from app.services.auth_service import token_still_valid
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -37,6 +38,8 @@ def get_current_user(
 
     user = db.get(User, user_id)
     if user is None or user.estado != UserStatus.ACTIVE:
+        raise INVALID_CREDENTIALS
+    if not token_still_valid(payload, user):
         raise INVALID_CREDENTIALS
 
     return user

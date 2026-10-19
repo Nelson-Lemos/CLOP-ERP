@@ -3,22 +3,26 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import {
   BarChart3,
   Bell,
+  BookOpen,
   Building2,
+  ClipboardCheck,
   ClipboardList,
   FileText,
   LayoutDashboard,
   Menu,
   ScrollText,
   Send,
+  TrendingUp,
   User,
   Users,
+  Wallet,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import Avatar from '../ui/Avatar'
 import { unreadCount } from '../../services/notifications'
-import type { UserRole } from '../../types/user'
+import { ROLE_LABELS, type UserRole } from '../../types/user'
 
 interface MenuItem {
   to: string
@@ -28,27 +32,25 @@ interface MenuItem {
 }
 
 const MENU: MenuItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['CEO', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/employees', label: 'Funcionários', icon: Users, roles: ['CEO'] },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/employees', label: 'Funcionários', icon: Users, roles: ['CEO', 'PCA'] },
   { to: '/employees', label: 'Minha Equipe', icon: Users, roles: ['MANAGER'] },
-  { to: '/departments', label: 'Departamentos', icon: Building2, roles: ['CEO'] },
+  { to: '/departments', label: 'Departamentos', icon: Building2, roles: ['CEO', 'PCA'] },
   { to: '/tasks', label: 'Minhas Tarefas', icon: ClipboardList, roles: ['EMPLOYEE'] },
-  { to: '/tasks', label: 'Tarefas', icon: ClipboardList, roles: ['CEO', 'MANAGER'] },
-  { to: '/delegar', label: 'Delegar Tarefa', icon: Send, roles: ['CEO', 'MANAGER'] },
+  { to: '/tasks', label: 'Tarefas', icon: ClipboardList, roles: ['CEO', 'PCA', 'MANAGER'] },
+  { to: '/delegar', label: 'Delegar Tarefa', icon: Send, roles: ['CEO', 'PCA', 'MANAGER'] },
   { to: '/productivity', label: 'Meu Desempenho', icon: BarChart3, roles: ['EMPLOYEE'] },
   { to: '/productivity', label: 'Desempenho', icon: BarChart3, roles: ['MANAGER'] },
-  { to: '/productivity', label: 'Produtividade', icon: BarChart3, roles: ['CEO'] },
-  { to: '/reports', label: 'Relatórios', icon: FileText, roles: ['CEO', 'MANAGER'] },
-  { to: '/notifications', label: 'Notificações', icon: Bell, roles: ['CEO', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/audit', label: 'Auditoria', icon: ScrollText, roles: ['CEO'] },
-  { to: '/profile', label: 'Meu Perfil', icon: User, roles: ['CEO', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/productivity', label: 'Produtividade', icon: BarChart3, roles: ['CEO', 'PCA'] },
+  { to: '/reports', label: 'Relatórios', icon: FileText, roles: ['CEO', 'PCA', 'MANAGER'] },
+  { to: '/trading', label: 'Checklist do Dia', icon: ClipboardCheck, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/trading/diario', label: 'Diário de Operações', icon: BookOpen, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/trading/conta', label: 'Evolução da Conta', icon: Wallet, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/trading/relatorio', label: 'Relatório Mensal', icon: TrendingUp, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/notifications', label: 'Notificações', icon: Bell, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/audit', label: 'Auditoria', icon: ScrollText, roles: ['CEO', 'PCA'] },
+  { to: '/profile', label: 'Meu Perfil', icon: User, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
 ]
-
-const ROLE_LABEL: Record<UserRole, string> = {
-  CEO: 'Administrador',
-  MANAGER: 'Chefe de Departamento',
-  EMPLOYEE: 'Funcionário',
-}
 
 export default function Layout({ onLogout }: { onLogout: () => void }) {
   const { user } = useAuth()
@@ -183,7 +185,7 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
                     {user.nome_completo}
                   </span>
                   <span style={{ color: 'var(--clop-gray)', fontSize: '0.68rem' }}>
-                    {ROLE_LABEL[user.role]}
+                    {ROLE_LABELS[user.role]}
                   </span>
                 </div>
               </div>

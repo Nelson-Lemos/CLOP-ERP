@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, LargeBinary, String, func
+from sqlalchemy.dialects.mysql import MEDIUMBLOB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -8,8 +9,22 @@ from app.core.database import Base
 
 class UserRole:
     CEO = "CEO"
+    PCA = "PCA"
     MANAGER = "MANAGER"
+    TRADING_LEADER = "TRADING_LEADER"
     EMPLOYEE = "EMPLOYEE"
+
+    @classmethod
+    def all(cls) -> set[str]:
+        return {cls.CEO, cls.PCA, cls.MANAGER, cls.TRADING_LEADER, cls.EMPLOYEE}
+
+    @classmethod
+    def admin_roles(cls) -> tuple[str, ...]:
+        return (cls.CEO, cls.PCA)
+
+    @classmethod
+    def is_admin(cls, role: str) -> bool:
+        return role in cls.admin_roles()
 
 
 class UserStatus:
@@ -26,11 +41,16 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     telefone: Mapped[str | None] = mapped_column(String(30))
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime)
     cargo: Mapped[str | None] = mapped_column(String(100))
     departamento_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)
     role: Mapped[str] = mapped_column(String(20), default=UserRole.EMPLOYEE, nullable=False)
     data_admissao: Mapped[date | None] = mapped_column(Date)
     foto: Mapped[str | None] = mapped_column(String(255))
+    foto_mime: Mapped[str | None] = mapped_column(String(50))
+    foto_data: Mapped[bytes | None] = mapped_column(
+        LargeBinary().with_variant(MEDIUMBLOB(), "mysql")
+    )
     estado: Mapped[str] = mapped_column(String(20), default=UserStatus.ACTIVE, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

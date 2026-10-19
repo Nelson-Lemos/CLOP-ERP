@@ -3,6 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+UserRoleLiteral = Literal["CEO", "PCA", "MANAGER", "TRADING_LEADER", "EMPLOYEE"]
+UserStatusLiteral = Literal["ACTIVE", "INACTIVE", "SUSPENDED"]
+
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -17,6 +20,7 @@ class UserOut(BaseModel):
     data_admissao: date | None = None
     foto: str | None = None
     estado: str
+    password_changed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -28,7 +32,7 @@ class UserCreate(BaseModel):
     telefone: str | None = Field(default=None, max_length=30)
     cargo: str | None = Field(default=None, max_length=100)
     departamento_id: int | None = None
-    role: Literal["CEO", "MANAGER", "EMPLOYEE"] = "EMPLOYEE"
+    role: UserRoleLiteral = "EMPLOYEE"
     data_admissao: date | None = None
     foto: str | None = Field(default=None, max_length=255)
 
@@ -40,14 +44,14 @@ class UserUpdate(BaseModel):
     telefone: str | None = Field(default=None, max_length=30)
     cargo: str | None = Field(default=None, max_length=100)
     departamento_id: int | None = None
-    role: Literal["CEO", "MANAGER", "EMPLOYEE"] | None = None
+    role: UserRoleLiteral | None = None
     data_admissao: date | None = None
     foto: str | None = Field(default=None, max_length=255)
-    estado: Literal["ACTIVE", "INACTIVE", "SUSPENDED"] | None = None
+    estado: UserStatusLiteral | None = None
 
 
 class UserStatusUpdate(BaseModel):
-    estado: Literal["ACTIVE", "INACTIVE", "SUSPENDED"]
+    estado: UserStatusLiteral
 
 
 class DepartmentRef(BaseModel):

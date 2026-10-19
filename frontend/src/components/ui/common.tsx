@@ -1,3 +1,6 @@
+import { useState, type InputHTMLAttributes } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
+
 export function LoadingState() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '4rem 0' }}>
@@ -147,6 +150,44 @@ export function FormField({ label, children }: { label: string; children: React.
       {label}
       {children}
     </label>
+  )
+}
+
+type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
+
+export function PasswordInput({ style, ...props }: PasswordInputProps) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <span style={{ display: 'block', position: 'relative', width: '100%' }}>
+      <input
+        {...props}
+        type={visible ? 'text' : 'password'}
+        style={{ ...style, width: '100%', paddingRight: '2.7rem' }}
+      />
+      <button
+        type="button"
+        aria-label={visible ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'}
+        title={visible ? 'Ocultar palavra-passe' : 'Mostrar palavra-passe'}
+        onClick={() => setVisible((current) => !current)}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: '0.6rem',
+          transform: 'translateY(-50%)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+          border: 0,
+          background: 'transparent',
+          color: 'var(--clop-gray)',
+          cursor: 'pointer',
+        }}
+      >
+        {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+      </button>
+    </span>
   )
 }
 

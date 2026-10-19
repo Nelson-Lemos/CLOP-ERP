@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { mediaUrl } from '../../services/api'
 
 export function initialsOf(nome: string): string {
   return (
@@ -18,15 +19,26 @@ interface AvatarProps {
 }
 
 export default function Avatar({ nome, foto, size = 36 }: AvatarProps) {
-  if (foto && foto.trim()) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [foto])
+
+  if (foto && foto.trim() && !imageFailed) {
     return (
       <img
-        src={foto.trim()}
+        src={mediaUrl(foto)}
         alt={nome}
         title={nome}
+        loading="lazy"
+        decoding="async"
+        onError={() => setImageFailed(true)}
         style={{
           width: size,
           height: size,
+          display: 'block',
+          flex: '0 0 auto',
           borderRadius: '50%',
           objectFit: 'cover',
           border: '1px solid var(--clop-card-border)',

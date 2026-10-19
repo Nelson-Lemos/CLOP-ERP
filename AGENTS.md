@@ -155,7 +155,7 @@ Atrasadas      3
 Gráficos:
 
 - **Produtividade geral**: evolução por mês (Janeiro, Fevereiro, Março, ...).
-- **Produtividade por departamento**: Trading, Tecnologia, Marketing, Financeiro, RH, Operações.
+- **Produtividade por departamento**: Tecnologia, Operação, Formação, Marketing, Recursos Humanos.
 - **Estado das tarefas**: Concluídas, Em andamento, Pendentes, Atrasadas, Rejeitadas.
 - **Tabela de funcionários**: nome, departamento, tarefas concluídas, pendentes, atrasadas, taxa de conclusão.
 
@@ -199,6 +199,16 @@ Cards: tarefas de hoje, desta semana, deste mês, atrasadas.
 Tabela: ID, Nome, Descrição, Chefe, Funcionários, Estado, Data de criação, Ações.
 
 Operações: Criar, Editar, Visualizar, Desativar.
+
+Departamentos oficiais da CLOP (ordem fixa de apresentação; são os únicos):
+
+```text
+Tecnologia
+Operação
+Formação
+Marketing
+Recursos Humanos
+```
 
 ## 9. Funcionários
 
@@ -746,7 +756,7 @@ Credenciais nunca em código-fonte.
 Criar `seed.py`:
 
 - criar utilizador **CEO Admin** com credenciais definidas via variáveis de ambiente (nunca passwords hardcoded);
-- criar departamentos de teste: Tecnologia, Trading, Financeiro, Marketing, Recursos Humanos, Operações.
+- criar os departamentos oficiais: Tecnologia, Operação, Formação, Marketing, Recursos Humanos.
 
 ---
 

@@ -1,14 +1,16 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import create_access_token, create_refresh_token, decode_token
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.dependencies.auth import CurrentUser
 from app.models.audit import AuditAction, AuditLog
 from app.models.user import User, UserStatus
-from app.schemas.auth import AuthResponse, LoginRequest, MeOut, RefreshRequest, TokenResponse
+from app.schemas.auth import AuthResponse, ChangePasswordRequest, LoginRequest, MeOut, RefreshRequest, TokenResponse
 from app.schemas.user import UserOut
-from app.services.auth_service import authenticate_user
+from app.services.auth_service import authenticate_user, password_policy_error, token_still_valid
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -67,10 +69,58 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Utilizador não ativo",
         )
+    if not token_still_valid(data, user):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessão expirada. Inicie sessão novamente.",
+        )
 
     return TokenResponse(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
+    )
+
+
+@router.post("/change-password", response_model=TokenResponse)
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    if not verify_password(payload.senha_atual, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Palavra-passe atual incorreta",
+        )
+
+    if payload.nova_password != payload.confirmar_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A confirmação não corresponde à nova palavra-passe",
+        )
+
+    policy_error = password_policy_error(payload.nova_password, current_user, payload.senha_atual)
+    if policy_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=policy_error)
+
+    current_user.password_hash = hash_password(payload.nova_password)
+    current_user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action=AuditAction.CHANGE_PASSWORD,
+            entity="user",
+            entity_id=current_user.id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    )
+    db.commit()
+
+    return TokenResponse(
+        access_token=create_access_token(current_user.id),
+        refresh_token=create_refresh_token(current_user.id),
     )
 
 

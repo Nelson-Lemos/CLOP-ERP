@@ -1,0 +1,54 @@
+# Render Blueprint — CLOP Management (backend FastAPI)
+# Aplica-se apenas se o servico for gerido por um Blueprint ligado a este repositorio.
+# Se o servico foi criado manualmente, os valores abaixo servem de referencia:
+# mantenha a variavel CORS_ORIGINS do dashboard igual a definida aqui.
+#
+# Variaveis marcadas com `sync: false` sao secretas e devem ser preenchidas
+# manualmente no dashboard do Render (nunca commitadas no repositorio).
+
+services:
+  - type: web
+    name: back-clop
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    # O seed e idempotente: cria departamentos e utilizadores base apenas se nao existirem.
+    # O bootstrap tambem corre no arranque da app (BOOTSTRAP_ON_STARTUP), portanto
+    # o preDeployCommand e apenas um reforco (pode nao existir em planos gratuitos).
+    preDeployCommand: alembic upgrade head && python seed.py
+    autoDeployTrigger: commit
+    envVars:
+      # --- Secretos (definir no dashboard do Render) ---
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_PCA_EMAIL
+        sync: false
+      - key: SEED_PCA_PASSWORD
+        sync: false
+
+      # --- Configuracao nao sensivel ---
+      # Inclui SEMPRE todos os frontends que chamam a API (producao, previews e dev local).
+      - key: CORS_ORIGINS
+        value: https://clop-erp.vercel.app,https://clop-erp-git-main-nelson-lemos-projects.vercel.app,http://localhost:5173,http://192.168.1.207:5173
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: OVERDUE_SCAN_INTERVAL_SECONDS
+        value: "120"
+      # Corre migracoes + seed no arranque (garante o admin base mesmo em
+      # planos do Render sem preDeployCommand). Definir "false" para desativar.
+      - key: BOOTSTRAP_ON_STARTUP
+        value: "true"
+      - key: SEED_PCA_NAME
+        value: PCA Admin

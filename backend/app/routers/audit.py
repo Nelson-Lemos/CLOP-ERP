@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.dependencies.auth import CurrentUser
+from app.dependencies.permissions import is_admin
 from app.models.audit import AuditLog
-from app.models.user import UserRole
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
@@ -18,7 +18,7 @@ def list_logs(
     db: Session = Depends(get_db),
     current_user: CurrentUser = None,
 ):
-    if current_user.role != UserRole.CEO:
+    if not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
 
     query = db.query(AuditLog)

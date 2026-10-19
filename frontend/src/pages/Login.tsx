@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { PasswordInput } from '../components/ui/common'
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth()
@@ -82,8 +83,7 @@ export default function Login() {
             outline: 'none',
           }}
         />
-        <input
-          type="password"
+        <PasswordInput
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
