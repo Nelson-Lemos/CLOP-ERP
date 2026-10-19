@@ -1,9 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { mediaUrl } from '../../services/api'
 
-export function initialsOf(nome: string): string {
+export function initialsOf(nome: string | null | undefined): string {
   return (
-    nome
+    (nome ?? '')
+      .trim()
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 2)
@@ -13,13 +14,14 @@ export function initialsOf(nome: string): string {
 }
 
 interface AvatarProps {
-  nome: string
+  nome: string | null | undefined
   foto?: string | null
   size?: number
 }
 
 export default function Avatar({ nome, foto, size = 36 }: AvatarProps) {
   const [imageFailed, setImageFailed] = useState(false)
+  const displayName = nome?.trim() || 'Utilizador'
 
   useEffect(() => {
     setImageFailed(false)
@@ -29,8 +31,8 @@ export default function Avatar({ nome, foto, size = 36 }: AvatarProps) {
     return (
       <img
         src={mediaUrl(foto)}
-        alt={nome}
-        title={nome}
+        alt={displayName}
+        title={displayName}
         loading="lazy"
         decoding="async"
         onError={() => setImageFailed(true)}
@@ -63,5 +65,5 @@ export default function Avatar({ nome, foto, size = 36 }: AvatarProps) {
     userSelect: 'none',
   }
 
-  return <span style={box}>{initialsOf(nome)}</span>
+  return <span style={box}>{initialsOf(displayName)}</span>
 }
