@@ -4,6 +4,30 @@ export type MacroDirection = 'ALTA' | 'BAIXA'
 export type MacroBias = 'A_FAVOR' | 'CONTRA'
 export type PriceRegion = 'CARA' | 'BARATA'
 
+export type EvidenceTipo = 'ENTRADA' | 'GESTAO' | 'FECHO'
+export type RevisaoEstado = 'NAO_REVISADA' | 'APROVADA' | 'INCONSISTENTE' | 'CORRECAO_PEDIDA'
+export type RevisaoDecision = 'APROVADA' | 'INCONSISTENTE' | 'CORRECAO_PEDIDA'
+
+export const EVIDENCIA_TIPO_LABELS: Record<EvidenceTipo, string> = {
+  ENTRADA: 'Entrada',
+  GESTAO: 'Gestão',
+  FECHO: 'Fecho',
+}
+
+export const REVISAO_ESTADO_LABELS: Record<RevisaoEstado, string> = {
+  NAO_REVISADA: 'Não revista',
+  APROVADA: 'Aprovada',
+  INCONSISTENTE: 'Com inconsistência',
+  CORRECAO_PEDIDA: 'Correcção pedida',
+}
+
+export const REVISAO_ESTADO_COLORS: Record<RevisaoEstado, string> = {
+  NAO_REVISADA: 'var(--clop-gray)',
+  APROVADA: 'var(--success)',
+  INCONSISTENTE: 'var(--danger)',
+  CORRECAO_PEDIDA: 'var(--warning)',
+}
+
 export type Mindset =
   | 'CALMO'
   | 'CONFIANTE'
@@ -127,6 +151,32 @@ export interface Method extends MethodPayload {
   trade_id: number
 }
 
+export interface Evidence {
+  id: number
+  trade_id: number
+  user_id: number
+  uploader_nome: string | null
+  tipo: EvidenceTipo
+  filename: string
+  content_type: string | null
+  size: number
+  sha256: string
+  alerta_hash_duplicado: boolean
+  alerta_upload_tardio: boolean
+  uploaded_at: string
+  url: string | null
+}
+
+export interface Review {
+  id: number
+  trade_id: number
+  user_id: number
+  user_nome: string | null
+  action: string
+  comentario: string | null
+  created_at: string
+}
+
 export interface Trade {
   id: number
   operator_id: number
@@ -135,15 +185,32 @@ export interface Trade {
   ativo: string
   direcao: TradeDirection
   estado: TradeEstado
+  preco_entrada: number | null
+  preco_stop: number | null
+  preco_alvo: number | null
+  preco_saida: number | null
+  hora_entrada: string | null
+  hora_saida: string | null
+  tamanho_lote: number | null
   valor_finaneiro: number | null
   risco_retorno: number | null
   seguiu_plano: boolean
   mindset: string | null
   observacoes: string | null
+  revisao_estado: RevisaoEstado
+  revisao_por: number | null
+  revisao_por_nome: string | null
+  revisao_em: string | null
+  revisao_comentario: string | null
+  divergencia_plano: boolean
+  tem_evidencia_entrada: boolean
+  tem_evidencia_fecho: boolean
   created_by: number
   created_at: string
   updated_at: string
   method: Method | null
+  evidencias: Evidence[]
+  revisoes: Review[]
 }
 
 export interface TradePayload {
@@ -151,12 +218,40 @@ export interface TradePayload {
   ativo: string
   direcao: TradeDirection
   estado: TradeEstado
+  preco_entrada?: number | null
+  preco_stop?: number | null
+  preco_alvo?: number | null
+  preco_saida?: number | null
+  hora_entrada?: string | null
+  hora_saida?: string | null
+  tamanho_lote?: number | null
   valor_finaneiro: number | null
   risco_retorno: number | null
   seguiu_plano: boolean
   mindset: string | null
   observacoes: string | null
   method: MethodPayload | null
+}
+
+export interface ReviewQueue {
+  total: number
+  limit: number
+  offset: number
+  items: Trade[]
+}
+
+export interface ReviewQueueFilters {
+  operatorId?: number | null
+  dataInicio?: string
+  dataFim?: string
+  ativo?: string
+  revisaoEstado?: RevisaoEstado | ''
+  resultado?: TradeEstado | ''
+  seguiuPlano?: boolean | null
+  divergencia?: boolean | null
+  semEvidencia?: boolean | null
+  limit?: number
+  offset?: number
 }
 
 export interface Account {
@@ -214,6 +309,40 @@ export interface ObservationRow {
   observacoes: string | null
 }
 
+export interface CapturaImagem {
+  id: number
+  tipo: EvidenceTipo
+  filename: string
+  url: string
+}
+
+export interface CapturaItem {
+  trade_id: number
+  data_operacao: string
+  ativo: string
+  direcao: TradeDirection
+  estado: TradeEstado
+  seguiu_plano: boolean
+  divergencia_plano: boolean
+  revisao_estado: RevisaoEstado
+  valor_finaneiro: number | null
+  sem_evidencia: boolean
+  imagens: CapturaImagem[]
+}
+
+export interface EvidenceReport {
+  total_fechadas: number
+  com_evidencia: number
+  sem_evidencia: number
+  pct_com_evidencia: number
+  aprovadas: number
+  pct_aprovadas: number
+  inconsistentes: number
+  correcoes_pedidas: number
+  nao_revisadas: number
+  divergencias_plano: number
+}
+
 export interface MonthlyReport {
   operator_id: number
   operator_nome: string
@@ -237,6 +366,8 @@ export interface MonthlyReport {
     nao_seguhou_resultado: number
     taxa_seguimento: number
   }
+  evidencia: EvidenceReport
+  capturas: CapturaItem[]
   mindset: GroupRow[]
   ativos: GroupRow[]
   direcoes: GroupRow[]

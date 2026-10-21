@@ -2,12 +2,14 @@ import csv
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
+from pathlib import Path
 
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.models.trading import TradingTrade
 from app.schemas.trading import MonthOut
@@ -17,6 +19,10 @@ GOLD = colors.HexColor("#d4a72c")
 BLACK = colors.HexColor("#050505")
 WHITE = colors.white
 GRAY = colors.HexColor("#a1a1aa")
+LIGHT = colors.HexColor("#f4f4f5")
+
+THUMB_WIDTH = 40 * mm
+THUMB_HEIGHT = 28 * mm
 
 
 def _fmt_money(value: float | None) -> str:
@@ -25,8 +31,8 @@ def _fmt_money(value: float | None) -> str:
     return f"US$ {value:,.2f}"
 
 
-def _table(rows: list[list], header: bool = True) -> Table:
-    table = Table(rows, colWidths=None, repeatRows=1 if header else 0)
+def _table(rows: list[list], header: bool = True, col_widths: list | None = None) -> Table:
+    table = Table(rows, colWidths=col_widths, repeatRows=1 if header else 0)
     table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("BACKGROUND", (0, 0), (-1, 0), GOLD),
@@ -37,6 +43,26 @@ def _table(rows: list[list], header: bool = True) -> Table:
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     return table
+
+
+def _thumbnail_flowable(file_path: str | None) -> Image | None:
+    if not file_path:
+        return None
+    path = Path(file_path)
+    if not path.exists():
+        return None
+    try:
+        with PILImage.open(path) as img:
+            thumb = img.convert("RGB")
+            thumb.thumbnail((int(THUMB_WIDTH), int(THUMB_HEIGHT)))
+            width, height = thumb.size
+            buffer = BytesIO()
+            thumb.save(buffer, format="PNG")
+    except Exception:
+        return None
+    buffer.seek(0)
+    scale = min(THUMB_WIDTH / width, THUMB_HEIGHT / height, 1)
+    return Image(buffer, width=width * scale, height=height * scale)
 
 
 def trades_csv(trades: list[TradingTrade], *, operator_nome: str) -> str:
@@ -160,6 +186,42 @@ def render_monthly_report_pdf(report: dict) -> bytes:
     story.append(_table(
         [["Item não cumprido", "Dias"]] + [[label.replace("sem_", "Sem ").replace("_", " "), str(count)] for label, count in itens.items()]
     ))
+
+    evidencia = report.get("evidencia") or {}
+    story.append(Paragraph("EVIDÊNCIAS E REVISÃO DO LÍDER", h2))
+    story.append(_table([
+        ["Fechadas", "Com evidência", "% com evidência", "Aprovadas", "% aprovadas", "Inconsistências", "Correcções pedidas", "Divergências de plano"],
+        [
+            str(evidencia.get("total_fechadas", 0)),
+            str(evidencia.get("com_evidencia", 0)),
+            f"{evidencia.get('pct_com_evidencia', 0)}%",
+            str(evidencia.get("aprovadas", 0)),
+            f"{evidencia.get('pct_aprovadas', 0)}%",
+            str(evidencia.get("inconsistentes", 0)),
+            str(evidencia.get("correcoes_pedidas", 0)),
+            str(evidencia.get("divergencias_plano", 0)),
+        ],
+    ], header=False))
+
+    capturas = report.get("capturas") or []
+    if capturas:
+        story.append(Paragraph("CAPTURAS — OPERAÇÕES PERDIDAS OU FORA DO PLANO", h2))
+        cell_style = ParagraphStyle("CellCaptura", parent=styles["Normal"], fontSize=8, leading=10)
+        rows = []
+        for item in capturas:
+            label = Paragraph(
+                f"<b>{item['ativo']}</b> · {item['data_operacao']} · {item['estado']}<br/>"
+                f"Valor: {_fmt_money(item.get('valor_finaneiro'))}<br/>"
+                f"{'Seguiu' if item['seguiu_plano'] else '<b>Não seguiu</b>'} o plano<br/>"
+                f"Revisão: {item.get('revisao_estado', 'NAO_REVISADA').replace('_', ' ').title()}",
+                cell_style,
+            )
+            flows = [f for f in (_thumbnail_flowable(i.get("file_path")) for i in item["imagens"]) if f is not None]
+            if not flows:
+                flows = [Paragraph("Sem captura anexada", cell_style)]
+            row = [label] + flows[:3] + [""] * max(0, 3 - len(flows[:3]))
+            rows.append(row)
+        story.append(_table(rows, header=False, col_widths=[46 * mm, 42 * mm, 42 * mm, 42 * mm]))
 
     if report["observacoes"]:
         story.append(Paragraph("OBSERVAÇÕES DO MÊS", h2))

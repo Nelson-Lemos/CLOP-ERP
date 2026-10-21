@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { CompanyProductivityResult, EmployeeDashboardData, MonthlyPoint } from '../types/report'
+import type { CompanyProductivityResult, Counts, EmployeeDashboardData, MonthlyPoint } from '../types/report'
+import { EMPTY_COUNTS, EMPTY_METRICS } from '../types/report'
 import { getCompanyProductivity, getDepartmentProductivity, getEmployeeDashboard } from '../services/dashboard'
 import { useAuth } from '../hooks/useAuth'
 import StatCard from '../components/ui/StatCard'
@@ -76,18 +77,19 @@ function EmployeePerformance() {
   if (loading) return <LoadingState />
   if (error || !data) return <ErrorState message={error || 'Sem dados.'} onRetry={() => window.location.reload()} />
 
-  const m = data.metrics
-  const entries = Object.entries(data.status_distribution)
+  const m = data.metrics ?? EMPTY_METRICS
+  const all: Counts = data.all ?? EMPTY_COUNTS
+  const entries = Object.entries(data.status_distribution ?? {})
   const totalDistribution = entries.reduce((acc, [, v]) => acc + v, 0)
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
-        <StatCard title="Tarefas atribuídas" value={data.all.total} />
-        <StatCard title="Concluídas" value={data.all.completed} accent="success" />
-        <StatCard title="Pendentes" value={data.all.pending} accent="warning" />
-        <StatCard title="Atrasadas" value={data.all.overdue} accent="danger" />
-        <StatCard title="Rejeitadas" value={data.all.rejected} accent="danger" />
+        <StatCard title="Tarefas atribuídas" value={all.total} />
+        <StatCard title="Concluídas" value={all.completed} accent="success" />
+        <StatCard title="Pendentes" value={all.pending} accent="warning" />
+        <StatCard title="Atrasadas" value={all.overdue} accent="danger" />
+        <StatCard title="Rejeitadas" value={all.rejected} accent="danger" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

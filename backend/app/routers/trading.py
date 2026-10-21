@@ -1,11 +1,15 @@
 from datetime import date, datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Form, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.dependencies.auth import CurrentUser
-from app.models.trading import TradingTrade
+from app.models.audit import AuditAction
+from app.models.trading import TradeEvidenceType, TradeReviewStatus, TradingEvidence, TradingTrade
 from app.models.user import User, UserRole
 from app.schemas.trading import (
     AccountOut,
@@ -13,10 +17,15 @@ from app.schemas.trading import (
     ChecklistOut,
     ChecklistSave,
     ChecklistStatusOut,
+    EvidenceOut,
     EvolutionOut,
     MethodOut,
     MonthOut,
     MonthUpdate,
+    ReviewDecisionInput,
+    ReviewOut,
+    ReviewQueueOut,
+    ReviewResponseInput,
     TradeCreate,
     TradeOut,
     TradeUpdate,
@@ -55,6 +64,38 @@ def _trade_or_404(db: Session, trade_id: int) -> TradingTrade:
     return trade
 
 
+def _assert_can_view_trade(actor: User, trade: TradingTrade) -> None:
+    if actor.id != trade.operator_id and not ts.can_view_all(actor):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para ver registos de outro operador")
+
+
+def _assert_can_review(actor: User) -> None:
+    if not ts.can_review_trades(actor):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para rever operações")
+
+
+def _evidence_dict(evidence: TradingEvidence) -> dict:
+    data = EvidenceOut.model_validate(evidence).model_dump()
+    data["uploader_nome"] = evidence.user.nome_completo if evidence.user else None
+    data["url"] = ts.evidence_url(evidence)
+    return data
+
+
+def _evidence_out(evidence: TradingEvidence) -> EvidenceOut:
+    return EvidenceOut(**_evidence_dict(evidence))
+
+
+def _evidence_file_or_404(evidence: TradingEvidence):
+    path = Path(evidence.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ficheiro da evidência não encontrado")
+    return FileResponse(
+        path,
+        media_type=evidence.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{evidence.filename}"'},
+    )
+
+
 def _checklist_out(checklist) -> ChecklistOut:
     data = ChecklistOut.model_validate(checklist).model_dump()
     data["operator_nome"] = checklist.operator.nome_completo if checklist.operator else None
@@ -66,6 +107,17 @@ def _trade_out(trade: TradingTrade) -> TradeOut:
     data["operator_nome"] = trade.operator.nome_completo if trade.operator else None
     if trade.method is not None:
         data["method"] = MethodOut.model_validate(trade.method).model_dump()
+    data["revisao_por_nome"] = trade.revisor.nome_completo if trade.revisor else None
+    data["evidencias"] = [_evidence_dict(e) for e in sorted(trade.evidencias, key=lambda e: e.uploaded_at)]
+    revisoes = []
+    for review in sorted(trade.revisoes, key=lambda r: r.created_at):
+        item = ReviewOut.model_validate(review).model_dump()
+        item["user_nome"] = review.user.nome_completo if review.user else None
+        revisoes.append(item)
+    data["revisoes"] = revisoes
+    tipos = {e.tipo for e in trade.evidencias}
+    data["tem_evidencia_entrada"] = TradeEvidenceType.ENTRADA in tipos
+    data["tem_evidencia_fecho"] = TradeEvidenceType.FECHO in tipos
     return TradeOut(**data)
 
 
@@ -215,6 +267,13 @@ def create_trade(payload: TradeCreate, request: Request, operator_id: int | None
         ativo=payload.ativo,
         direcao=payload.direcao,
         estado=payload.estado,
+        preco_entrada=payload.preco_entrada,
+        preco_stop=payload.preco_stop,
+        preco_alvo=payload.preco_alvo,
+        preco_saida=payload.preco_saida,
+        hora_entrada=payload.hora_entrada,
+        hora_saida=payload.hora_saida,
+        tamanho_lote=payload.tamanho_lote,
         valor_finaneiro=payload.valor_finaneiro,
         risco_retorno=payload.risco_retorno,
         seguiu_plano=payload.seguiu_plano,
@@ -239,6 +298,13 @@ def update_trade(trade_id: int, payload: TradeUpdate, request: Request, current_
         ativo=payload.ativo,
         direcao=payload.direcao,
         estado=payload.estado,
+        preco_entrada=payload.preco_entrada,
+        preco_stop=payload.preco_stop,
+        preco_alvo=payload.preco_alvo,
+        preco_saida=payload.preco_saida,
+        hora_entrada=payload.hora_entrada,
+        hora_saida=payload.hora_saida,
+        tamanho_lote=payload.tamanho_lote,
         valor_finaneiro=payload.valor_finaneiro,
         risco_retorno=payload.risco_retorno,
         seguiu_plano=payload.seguiu_plano,
@@ -258,6 +324,180 @@ def delete_trade(trade_id: int, request: Request, current_user: CurrentUser = No
     record_audit(db, user_id=current_user.id, action="DELETE_TRADE", entity="trading_trade", entity_id=trade.id, request=request)
     ts.delete_trade(db, trade=trade)
     return None
+
+
+@router.post("/trades/{trade_id}/evidences", response_model=EvidenceOut, status_code=status.HTTP_201_CREATED)
+async def upload_evidence(
+    trade_id: int,
+    request: Request,
+    tipo: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    trade = _trade_or_404(db, trade_id)
+    _assert_can_write(current_user, trade.operator_id)
+
+    normalized_tipo = (tipo or "").strip().upper()
+    if normalized_tipo not in TradeEvidenceType.all():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tipo de evidência inválido (use ENTRADA, GESTAO ou FECHO)",
+        )
+
+    filename = file.filename or "evidencia"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ts.ALLOWED_EVIDENCE_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato não permitido (use PNG, JPG ou WEBP)")
+
+    content_type = file.content_type or ""
+    if content_type and not content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="O ficheiro deve ser uma imagem")
+
+    content = await file.read()
+    max_bytes = settings.TRADE_EVIDENCE_MAX_MB * 1024 * 1024
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ficheiro vazio")
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Imagem demasiado grande (máximo {settings.TRADE_EVIDENCE_MAX_MB} MB)",
+        )
+
+    evidence = ts.add_evidence(
+        db,
+        trade=trade,
+        user=current_user,
+        tipo=normalized_tipo,
+        filename=filename,
+        content_type=content_type or "application/octet-stream",
+        content=content,
+    )
+    record_audit(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.UPLOAD_TRADE_EVIDENCE,
+        entity="trading_evidence",
+        entity_id=evidence.id,
+        request=request,
+    )
+    db.commit()
+    return _evidence_out(evidence)
+
+
+@router.get("/trades/{trade_id}/evidences", response_model=list[EvidenceOut])
+def list_evidences(trade_id: int, current_user: CurrentUser = None, db: Session = Depends(get_db)):
+    trade = _trade_or_404(db, trade_id)
+    _assert_can_view_trade(current_user, trade)
+    return [_evidence_out(e) for e in sorted(trade.evidencias, key=lambda e: e.uploaded_at)]
+
+
+@router.get("/evidences/{evidence_id}/file")
+def evidence_file(evidence_id: int, current_user: CurrentUser = None, db: Session = Depends(get_db)):
+    evidence = db.get(TradingEvidence, evidence_id)
+    if evidence is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evidência não encontrada")
+    trade = _trade_or_404(db, evidence.trade_id)
+    _assert_can_view_trade(current_user, trade)
+    return _evidence_file_or_404(evidence)
+
+
+@router.get("/review-queue", response_model=ReviewQueueOut)
+def review_queue(
+    operator_id: int | None = None,
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    ativo: str | None = None,
+    revisao_estado: str | None = None,
+    resultado: str | None = None,
+    seguiu_plano: bool | None = None,
+    divergencia: bool | None = None,
+    sem_evidencia: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    _assert_can_review(current_user)
+    limit = max(1, min(limit, 200))
+    offset = max(offset, 0)
+    data = _handle_errors(
+        ts.review_queue,
+        db,
+        operator_id=operator_id,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        ativo=ativo,
+        revisao_estado=revisao_estado,
+        resultado=resultado,
+        seguiu_plano=seguiu_plano,
+        divergencia=divergencia,
+        sem_evidencia=sem_evidencia,
+        limit=limit,
+        offset=offset,
+    )
+    return ReviewQueueOut(
+        total=data["total"],
+        limit=limit,
+        offset=offset,
+        items=[_trade_out(trade) for trade in data["items"]],
+    )
+
+
+@router.post("/trades/{trade_id}/review", response_model=TradeOut)
+def review_trade(
+    trade_id: int,
+    payload: ReviewDecisionInput,
+    request: Request,
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    _assert_can_review(current_user)
+    trade = _trade_or_404(db, trade_id)
+    trade = _handle_errors(
+        ts.review_trade,
+        db,
+        trade=trade,
+        reviewer=current_user,
+        decision=payload.decision,
+        comentario=payload.comentario,
+        divergencia_plano=payload.divergencia_plano,
+    )
+    record_audit(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.REVIEW_TRADE,
+        entity="trading_trade",
+        entity_id=trade.id,
+        request=request,
+    )
+    db.commit()
+    return _trade_out(trade)
+
+
+@router.post("/trades/{trade_id}/review/respond", response_model=TradeOut)
+def respond_review(
+    trade_id: int,
+    payload: ReviewResponseInput,
+    request: Request,
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    trade = _trade_or_404(db, trade_id)
+    _assert_can_write(current_user, trade.operator_id)
+    trade = _handle_errors(
+        ts.respond_review, db, trade=trade, operator=current_user, comentario=payload.comentario
+    )
+    record_audit(
+        db,
+        user_id=current_user.id,
+        action=AuditAction.TRADE_REVIEW_RESPONSE,
+        entity="trading_trade",
+        entity_id=trade.id,
+        request=request,
+    )
+    db.commit()
+    return _trade_out(trade)
 
 
 @router.get("/account", response_model=AccountOut | None)
@@ -321,18 +561,26 @@ def save_month(mes: int, ano: int, payload: MonthUpdate, request: Request, opera
 
 
 @router.get("/monthly-report")
-def monthly_report(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, current_user: CurrentUser = None, db: Session = Depends(get_db)):
+def monthly_report(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, apenas_validadas: bool = False, incluir_evidencias: bool = False, current_user: CurrentUser = None, db: Session = Depends(get_db)):
     operator = _resolve(db, current_user, operator_id)
     today = date.today()
     year = ano or today.year
     month = mes or today.month
     if not 1 <= month <= 12:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mês inválido")
-    return ts.monthly_report(db, operator_id=operator.id, operator_nome=operator.nome_completo, ano=year, mes=month)
+    return ts.monthly_report(
+        db,
+        operator_id=operator.id,
+        operator_nome=operator.nome_completo,
+        ano=year,
+        mes=month,
+        apenas_validadas=apenas_validadas,
+        include_urls=incluir_evidencias,
+    )
 
 
 @router.get("/monthly-report/csv")
-def monthly_report_csv(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, current_user: CurrentUser = None, db: Session = Depends(get_db)):
+def monthly_report_csv(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, apenas_validadas: bool = False, current_user: CurrentUser = None, db: Session = Depends(get_db)):
     operator = _resolve(db, current_user, operator_id)
     today = date.today()
     year = ano or today.year
@@ -348,6 +596,8 @@ def monthly_report_csv(operator_id: int | None = None, ano: int | None = None, m
         .all()
     )
     trades = [t for t in trades if t.data_operacao.month == month]
+    if apenas_validadas:
+        trades = [t for t in trades if t.revisao_estado == TradeReviewStatus.APROVADA]
     content = trs.trades_csv(trades, operator_nome=operator.nome_completo)
     return Response(
         content=content,
@@ -357,12 +607,21 @@ def monthly_report_csv(operator_id: int | None = None, ano: int | None = None, m
 
 
 @router.get("/monthly-report/pdf")
-def monthly_report_pdf(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, current_user: CurrentUser = None, db: Session = Depends(get_db)):
+def monthly_report_pdf(operator_id: int | None = None, ano: int | None = None, mes: int | None = None, apenas_validadas: bool = False, current_user: CurrentUser = None, db: Session = Depends(get_db)):
     operator = _resolve(db, current_user, operator_id)
     today = date.today()
     year = ano or today.year
     month = mes or today.month
-    report = ts.monthly_report(db, operator_id=operator.id, operator_nome=operator.nome_completo, ano=year, mes=month)
+    report = ts.monthly_report(
+        db,
+        operator_id=operator.id,
+        operator_nome=operator.nome_completo,
+        ano=year,
+        mes=month,
+        apenas_validadas=apenas_validadas,
+        include_urls=True,
+        include_files=True,
+    )
     pdf = trs.render_monthly_report_pdf(report)
     return Response(
         content=pdf,

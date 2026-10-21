@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAdminDashboard, getDepartmentDashboard, getEmployeeDashboard } from '../services/dashboard'
-import type { AdminDashboardData, DepartmentDashboardData, EmployeeDashboardData, MonthlyPoint } from '../types/report'
+import type { AdminDashboardData, Counts, DepartmentDashboardData, EmployeeDashboardData, MonthlyPoint } from '../types/report'
+import { EMPTY_COUNTS, EMPTY_METRICS } from '../types/report'
 import { useAuth } from '../hooks/useAuth'
 import { isAdminRole } from '../types/user'
 import StatCard from '../components/ui/StatCard'
@@ -52,8 +53,8 @@ const STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Canceladas',
 }
 
-function StatusDistribution({ distribution }: { distribution: Record<string, number> }) {
-  const entries = Object.entries(distribution)
+function StatusDistribution({ distribution }: { distribution: Record<string, number> | undefined }) {
+  const entries = Object.entries(distribution ?? {})
   const total = entries.reduce((acc, [, v]) => acc + v, 0)
   if (total === 0) return <EmptyState message="Sem tarefas para apresentar." />
   return (
@@ -101,7 +102,7 @@ function AdminDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
         <div style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
           <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.95rem', marginTop: 0 }}>Produtividade geral — evolução por mês</h3>
-          <BarChart data={data.monthly} />
+          <BarChart data={data.monthly ?? []} />
         </div>
         <div style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
           <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.95rem', marginTop: 0 }}>Estado das tarefas</h3>
@@ -123,7 +124,7 @@ function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {data.departments.map((d) => (
+              {(data.departments ?? []).map((d) => (
                 <tr key={d.id}>
                   <td style={{ ...tdStyle, color: 'var(--clop-white)' }}>{d.nome}</td>
                   <td style={tdStyle}>{d.total_tasks}</td>
@@ -151,7 +152,7 @@ function AdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {data.employees.map((e) => (
+            {(data.employees ?? []).map((e) => (
               <tr key={e.id}>
                 <td style={tdStyle}>
                   <Link to={`/employees/${e.id}`} style={{ color: 'var(--clop-gold-light)', textDecoration: 'none' }}>
@@ -211,14 +212,14 @@ function DepartmentDash() {
             </tr>
           </thead>
           <tbody>
-            {data.employees.length === 0 ? (
+            {(data.employees ?? []).length === 0 ? (
               <tr>
                 <td style={{ ...tdStyle, color: 'var(--clop-gray)' }} colSpan={6}>
                   Sem funcionários no departamento.
                 </td>
               </tr>
             ) : (
-              data.employees.map((e) => (
+              (data.employees ?? []).map((e) => (
                 <tr key={e.id}>
                   <td style={tdStyle}>
                     <Link to={`/employees/${e.id}`} style={{ color: 'var(--clop-gold-light)', textDecoration: 'none' }}>
@@ -255,20 +256,24 @@ function EmployeeDash() {
   if (loading) return <LoadingState />
   if (error || !data) return <ErrorState message={error || 'Sem dados.'} onRetry={() => window.location.reload()} />
 
+  const today: Counts = data.today ?? EMPTY_COUNTS
+  const all: Counts = data.all ?? EMPTY_COUNTS
+  const metrics = data.metrics ?? EMPTY_METRICS
+
   return (
     <div>
       <PageHeader title={`Olá, ${data.nome}`} subtitle="As suas tarefas" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <StatCard title="Tarefas hoje" value={data.today.total} />
-        <StatCard title="Concluídas" value={data.today.completed} accent="success" />
-        <StatCard title="Em andamento" value={data.today.in_progress} accent="blue" />
-        <StatCard title="Pendentes" value={data.today.pending} accent="warning" />
-        <StatCard title="Atrasadas" value={data.all.overdue} accent="danger" />
+        <StatCard title="Tarefas hoje" value={today.total} />
+        <StatCard title="Concluídas" value={today.completed} accent="success" />
+        <StatCard title="Em andamento" value={today.in_progress} accent="blue" />
+        <StatCard title="Pendentes" value={today.pending} accent="warning" />
+        <StatCard title="Atrasadas" value={all.overdue} accent="danger" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
         {(['today', 'week', 'month'] as const).map((period) => {
-          const c = data[period]
+          const c: Counts = data[period] ?? EMPTY_COUNTS
           return (
             <div key={period} style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
               <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.9rem', marginTop: 0, textTransform: 'capitalize' }}>
@@ -300,9 +305,9 @@ function EmployeeDash() {
         <h3 style={{ color: 'var(--clop-gold-light)', fontSize: '0.95rem', marginTop: 0 }}>Minha produtividade</h3>
         <StatusDistribution distribution={data.status_distribution} />
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>Taxa de conclusão: <b style={{ color: 'var(--clop-gold-light)' }}>{data.metrics.completion_rate}%</b></span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>No prazo: <b style={{ color: 'var(--success)' }}>{data.metrics.on_time_rate}%</b></span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>Pontuação: <b style={{ color: 'var(--clop-white)' }}>{data.metrics.weighted_score}%</b></span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>Taxa de conclusão: <b style={{ color: 'var(--clop-gold-light)' }}>{metrics.completion_rate}%</b></span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>No prazo: <b style={{ color: 'var(--success)' }}>{metrics.on_time_rate}%</b></span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--clop-gray)' }}>Pontuação: <b style={{ color: 'var(--clop-white)' }}>{metrics.weighted_score}%</b></span>
         </div>
       </div>
     </div>

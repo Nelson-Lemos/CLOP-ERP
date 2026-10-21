@@ -28,10 +28,19 @@ export async function getDepartmentReport(id: number, filters: ReportFilters = {
   return data
 }
 
-export function reportPdfUrl(path: string, filters: ReportFilters = {}): string {
-  const base = import.meta.env.VITE_API_URL || '/api'
-  const params = new URLSearchParams(buildParams(filters)).toString()
-  return `${base}${path}${params ? `?${params}` : ''}`
+export async function downloadPdfReport(path: string, filename: string, filters: ReportFilters = {}): Promise<void> {
+  const { data } = await api.get<Blob>(path, {
+    params: buildParams(filters),
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(data)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 export async function listAuditLogs(params: { action?: string; entity?: string; limit?: number } = {}): Promise<{

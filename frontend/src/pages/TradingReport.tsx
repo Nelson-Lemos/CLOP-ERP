@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { downloadReportCsv, downloadReportPdf, getMonthlyReport } from '../services/trading'
+import { downloadReportCsv, downloadReportPdf, evidenceImageUrl, getMonthlyReport } from '../services/trading'
 import { isAdminRole } from '../types/user'
 import { useAuth } from '../hooks/useAuth'
 import OperatorPicker from '../components/ui/OperatorPicker'
@@ -19,8 +19,12 @@ import {
   DIRECAO_LABELS,
   ESTADO_COLORS,
   ESTADO_LABELS,
+  EVIDENCIA_TIPO_LABELS,
   MINDSET_LABELS,
   MONTHS_PT,
+  REVISAO_ESTADO_COLORS,
+  REVISAO_ESTADO_LABELS,
+  type CapturaItem,
   type Mindset,
   type MonthlyReport,
   type TradeEstado,
@@ -46,6 +50,65 @@ const ITENS_LABELS: Record<string, string> = {
   sem_planilha: 'Dias sem preencher a planilha',
   sem_gerenciamento: 'Dias sem respeitar o gerenciamento',
   sem_seguimento_plano: 'Dias sem seguir o plano operacional',
+}
+
+function CapturaThumb({ imagem }: { imagem: CapturaItem['imagens'][number] }) {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let active = true
+    evidenceImageUrl(imagem.id)
+      .then((url) => {
+        if (active) setSrc(url)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [imagem.id])
+  return (
+    <figure
+      title={`${EVIDENCIA_TIPO_LABELS[imagem.tipo]} · ${imagem.filename}`}
+      style={{ margin: 0, width: 96, border: '1px solid rgba(212,167,44,0.25)', borderRadius: 6, overflow: 'hidden', background: '#050505', flex: '0 0 auto' }}
+    >
+      {src ? (
+        <a href={src} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+          <img src={src} alt={imagem.filename} style={{ width: 96, height: 64, objectFit: 'cover', display: 'block' }} />
+        </a>
+      ) : (
+        <div style={{ width: 96, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.62rem', color: 'var(--clop-gray)' }}>
+          …
+        </div>
+      )}
+    </figure>
+  )
+}
+
+function CapturaCard({ captura }: { captura: CapturaItem }) {
+  return (
+    <div style={{ border: '1px solid rgba(212,167,44,0.12)', borderRadius: 10, padding: '0.65rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.75rem', color: 'var(--clop-gray)' }}>
+        <span>{new Date(`${captura.data_operacao}T00:00:00`).toLocaleDateString('pt-PT')}</span>
+        <strong style={{ color: 'var(--clop-white)' }}>{captura.ativo}</strong>
+        <span>{DIRECAO_LABELS[captura.direcao]}</span>
+        <span style={{ color: ESTADO_COLORS[captura.estado] }}>{ESTADO_LABELS[captura.estado]}</span>
+        {captura.valor_finaneiro !== null && (
+          <span style={{ color: captura.valor_finaneiro >= 0 ? 'var(--success)' : 'var(--danger)' }}>US$ {money(captura.valor_finaneiro)}</span>
+        )}
+        <span style={{ color: captura.seguiu_plano ? 'var(--success)' : 'var(--danger)' }}>{captura.seguiu_plano ? 'Seguiu o plano' : 'Não seguiu o plano'}</span>
+        <span style={{ color: REVISAO_ESTADO_COLORS[captura.revisao_estado] }}>{REVISAO_ESTADO_LABELS[captura.revisao_estado]}</span>
+        {captura.divergencia_plano && <span style={{ color: 'var(--warning)', fontWeight: 600 }}>Divergência ao plano</span>}
+      </div>
+      {captura.sem_evidencia ? (
+        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--danger)' }}>Sem evidência carregada para esta operação.</p>
+      ) : (
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          {captura.imagens.map((imagem) => (
+            <CapturaThumb key={imagem.id} imagem={imagem} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function GroupTable({ title, rows, label }: { title: string; rows: MonthlyReport['ativos']; label?: (key: string) => string }) {
@@ -94,18 +157,20 @@ export default function TradingReport() {
   const [estadoFilter, setEstadoFilter] = useState<TradeEstado | 'TODOS'>('PERDEU')
   const [planoFilter, setPlanoFilter] = useState<'TODOS' | 'SIM' | 'NAO'>('TODOS')
   const [mindsetFilter, setMindsetFilter] = useState<Mindset | 'TODOS'>('TODOS')
+  const [apenasValidadas, setApenasValidadas] = useState(false)
+  const [incluirEvidencias, setIncluirEvidencias] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      setReport(await getMonthlyReport(ano, mes, operatorId))
+      setReport(await getMonthlyReport(ano, mes, operatorId, { apenasValidadas, incluirEvidencias }))
     } catch {
       setError('Não foi possível carregar o relatório mensal.')
     } finally {
       setLoading(false)
     }
-  }, [ano, mes, operatorId])
+  }, [ano, mes, operatorId, apenasValidadas, incluirEvidencias])
 
   useEffect(() => {
     void load()
@@ -142,8 +207,12 @@ export default function TradingReport() {
               ))}
             </select>
             {canManage && <OperatorPicker value={operatorId} onChange={setOperatorId} />}
-            <GhostButton onClick={() => void downloadReportCsv(ano, mes, operatorId)}>CSV</GhostButton>
-            <GhostButton onClick={() => void downloadReportPdf(ano, mes, operatorId)}>PDF</GhostButton>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: 'var(--clop-gray)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={apenasValidadas} onChange={(e) => setApenasValidadas(e.target.checked)} />
+              Só validadas
+            </label>
+            <GhostButton onClick={() => void downloadReportCsv(ano, mes, operatorId, apenasValidadas)}>CSV</GhostButton>
+            <GhostButton onClick={() => void downloadReportPdf(ano, mes, operatorId, apenasValidadas)}>PDF</GhostButton>
           </div>
         }
       />
@@ -171,6 +240,49 @@ export default function TradingReport() {
               </div>
             ))}
           </div>
+
+          <section style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
+            <h2 style={{ fontSize: '0.95rem', color: 'var(--clop-gold-light)', margin: '0 0 0.75rem' }}>Evidências e revisão do líder</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.6rem' }}>
+              {[
+                { label: 'Operações fechadas', value: String(report.evidencia.total_fechadas), color: 'var(--clop-white)' },
+                { label: 'Com evidência', value: `${report.evidencia.pct_com_evidencia}%`, color: report.evidencia.sem_evidencia === 0 ? 'var(--success)' : 'var(--warning)' },
+                { label: 'Sem evidência', value: String(report.evidencia.sem_evidencia), color: report.evidencia.sem_evidencia === 0 ? 'var(--success)' : 'var(--danger)' },
+                { label: 'Aprovadas', value: `${report.evidencia.aprovadas} (${report.evidencia.pct_aprovadas}%)`, color: 'var(--success)' },
+                { label: 'Não revistas', value: String(report.evidencia.nao_revisadas), color: 'var(--clop-gray)' },
+                { label: 'Correcções pedidas', value: String(report.evidencia.correcoes_pedidas), color: 'var(--warning)' },
+                { label: 'Inconsistentes', value: String(report.evidencia.inconsistentes), color: 'var(--danger)' },
+                { label: 'Divergências ao plano', value: String(report.evidencia.divergencias_plano), color: 'var(--danger)' },
+              ].map((card) => (
+                <div key={card.label} style={{ background: 'rgba(13,13,13,0.6)', border: '1px solid rgba(212,167,44,0.1)', borderRadius: 10, padding: '0.65rem 0.8rem' }}>
+                  <p style={{ fontSize: '0.66rem', color: 'var(--clop-gray)', textTransform: 'uppercase', margin: 0, letterSpacing: '0.05em' }}>{card.label}</p>
+                  <p style={{ fontSize: '1.05rem', fontWeight: 700, color: card.color, margin: '0.2rem 0 0' }}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+              <h2 style={{ fontSize: '0.95rem', color: 'var(--clop-gold-light)', margin: 0 }}>Capturas das operações</h2>
+              <GhostButton onClick={() => setIncluirEvidencias((value) => !value)}>
+                {incluirEvidencias ? 'Ocultar capturas' : 'Mostrar capturas'}
+              </GhostButton>
+            </div>
+            {!incluirEvidencias ? (
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--clop-gray)' }}>
+                As imagens de evidência não estão carregadas. Clique em “Mostrar capturas” para visualizar.
+              </p>
+            ) : report.capturas.length === 0 ? (
+              <EmptyState message="Sem capturas para o mês seleccionado." />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {report.capturas.map((captura) => (
+                  <CapturaCard key={captura.trade_id} captura={captura} />
+                ))}
+              </div>
+            )}
+          </section>
 
           <section style={{ background: 'var(--clop-card-bg)', border: '1px solid var(--clop-card-border)', borderRadius: 'var(--clop-card-radius)', padding: '1.25rem' }}>
             <h2 style={{ fontSize: '0.95rem', color: 'var(--clop-gold-light)', margin: '0 0 0.75rem' }}>Seguiu o plano?</h2>

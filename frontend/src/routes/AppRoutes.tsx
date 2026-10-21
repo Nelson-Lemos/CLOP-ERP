@@ -20,6 +20,7 @@ import TradingChecklist from '../pages/TradingChecklist'
 import TradingJournal from '../pages/TradingJournal'
 import TradingAccount from '../pages/TradingAccount'
 import TradingReport from '../pages/TradingReport'
+import TradingReview from '../pages/TradingReview'
 
 export default function AppRoutes() {
   const { logout } = useAuth()
@@ -50,6 +51,9 @@ export default function AppRoutes() {
             <Route path="/trading/diario" element={<TradingJournal />} />
             <Route path="/trading/conta" element={<TradingAccount />} />
             <Route path="/trading/relatorio" element={<TradingReport />} />
+            <Route element={<RoleRoute roles={['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER']} />}>
+              <Route path="/trading/revisao" element={<TradingReview />} />
+            </Route>
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/profile" element={<Profile />} />
 

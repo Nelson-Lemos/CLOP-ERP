@@ -43,13 +43,14 @@ const MENU: MenuItem[] = [
   { to: '/productivity', label: 'Desempenho', icon: BarChart3, roles: ['MANAGER'] },
   { to: '/productivity', label: 'Produtividade', icon: BarChart3, roles: ['CEO', 'PCA'] },
   { to: '/reports', label: 'Relatórios', icon: FileText, roles: ['CEO', 'PCA', 'MANAGER'] },
-  { to: '/trading', label: 'Checklist do Dia', icon: ClipboardCheck, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/trading/diario', label: 'Diário de Operações', icon: BookOpen, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/trading/conta', label: 'Evolução da Conta', icon: Wallet, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/trading/relatorio', label: 'Relatório Mensal', icon: TrendingUp, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
-  { to: '/notifications', label: 'Notificações', icon: Bell, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/trading', label: 'Checklist do Dia', icon: ClipboardCheck, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
+  { to: '/trading/diario', label: 'Diário de Operações', icon: BookOpen, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
+  { to: '/trading/revisao', label: 'Fila de Revisão', icon: ClipboardCheck, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER'] },
+  { to: '/trading/conta', label: 'Evolução da Conta', icon: Wallet, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
+  { to: '/trading/relatorio', label: 'Relatório Mensal', icon: TrendingUp, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
+  { to: '/notifications', label: 'Notificações', icon: Bell, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
   { to: '/audit', label: 'Auditoria', icon: ScrollText, roles: ['CEO', 'PCA'] },
-  { to: '/profile', label: 'Meu Perfil', icon: User, roles: ['CEO', 'PCA', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/profile', label: 'Meu Perfil', icon: User, roles: ['CEO', 'PCA', 'MANAGER', 'TRADING_LEADER', 'EMPLOYEE'] },
 ]
 
 export default function Layout({ onLogout }: { onLogout: () => void }) {

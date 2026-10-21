@@ -257,6 +257,7 @@ export default function Employees() {
             >
               <option value="EMPLOYEE">Funcionário</option>
               <option value="MANAGER">Chefe</option>
+              <option value="TRADING_LEADER">Líder de Produção</option>
               {isAdmin && <option value="CEO">CEO</option>}
               {isAdmin && <option value="PCA">PCA</option>}
             </select>

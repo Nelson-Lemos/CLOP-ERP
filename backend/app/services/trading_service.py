@@ -30,6 +30,10 @@ ZERO = Decimal("0.00")
 
 EVIDENCE_DIR = Path(settings.UPLOAD_DIR) / "evidences"
 
+EVIDENCE_URL_TEMPLATE = "/api/trading/evidences/{id}/file"
+
+ALLOWED_EVIDENCE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
+
 WEEKDAYS_PT = ("Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo")
 
 MONTHS_PT = (
@@ -258,14 +262,15 @@ def has_evidence(trade: TradingTrade, tipo: str) -> bool:
 
 def validate_estado_evidence(estado: str, trade: TradingTrade, *, preco_saida: Decimal | None = None) -> None:
     if estado == TradeStatus.EM_ANDAMENTO:
-        if not has_evidence(trade, TradeEvidenceType.ENTRADA):
+        if settings.TRADING_REQUIRE_EVIDENCE and not has_evidence(trade, TradeEvidenceType.ENTRADA):
             raise ValueError("Sem captura de entrada a operação não pode passar para Em andamento")
     if estado in TradeStatus.closed():
-        if not has_evidence(trade, TradeEvidenceType.ENTRADA):
-            raise ValueError("Sem captura de entrada a operação não pode ser fechada")
-        if not has_evidence(trade, TradeEvidenceType.FECHO):
-            raise ValueError("Sem captura de fecho a operação não pode passar para Ganhou/Perdeu")
-        if preco_saida is None:
+        if settings.TRADING_REQUIRE_EVIDENCE:
+            if not has_evidence(trade, TradeEvidenceType.ENTRADA):
+                raise ValueError("Sem captura de entrada a operação não pode ser fechada")
+            if not has_evidence(trade, TradeEvidenceType.FECHO):
+                raise ValueError("Sem captura de fecho a operação não pode passar para Ganhou/Perdeu")
+        if settings.TRADING_REQUIRE_PRECO_SAIDA and preco_saida is None:
             raise ValueError("Informe o preço de saída para fechar a operação")
 
 
@@ -300,7 +305,9 @@ def create_trade(
     require_precheck(db, operator_id=operator_id, data_pregao=data_operacao)
     entrada, stop, alvo, saida = _price(preco_entrada), _price(preco_stop), _price(preco_alvo), _price(preco_saida)
     validate_prices(direcao, entrada, stop, alvo)
-    if estado in TradeStatus.closed() and saida is None:
+    if settings.TRADING_REQUIRE_PRECOS and (entrada is None or stop is None or alvo is None):
+        raise ValueError("Informe o preço de entrada, o stop e o alvo da operação")
+    if settings.TRADING_REQUIRE_PRECO_SAIDA and estado in TradeStatus.closed() and saida is None:
         raise ValueError("Informe o preço de saída para fechar a operação")
     trade = TradingTrade(
         operator_id=operator_id,
@@ -369,6 +376,10 @@ def update_trade(
     alvo = _price(preco_alvo) if preco_alvo is not None else trade.preco_alvo
     saida = _price(preco_saida) if preco_saida is not None else trade.preco_saida
     validate_prices(new_direcao, entrada, stop, alvo)
+    if new_estado in TradeStatus.closed() and settings.TRADING_REQUIRE_PRECOS and (
+        entrada is None or stop is None or alvo is None
+    ):
+        raise ValueError("Informe o preço de entrada, o stop e o alvo da operação")
     if data_operacao is not None:
         trade.data_operacao = data_operacao
     if ativo is not None:
@@ -642,10 +653,15 @@ def review_queue(
     return {"total": total, "limit": limit, "offset": offset, "items": query.all()}
 
 
+def evidence_url(evidence: TradingEvidence) -> str:
+    return EVIDENCE_URL_TEMPLATE.format(id=evidence.id)
+
+
 def _trades_by_month(db: Session, *, operator_id: int) -> dict[tuple[int, int], list[TradingTrade]]:
     trades = (
         db.query(TradingTrade)
         .filter(TradingTrade.operator_id == operator_id)
+        .options(selectinload(TradingTrade.evidencias), selectinload(TradingTrade.revisoes))
         .order_by(TradingTrade.data_operacao.asc())
         .all()
     )
@@ -828,7 +844,8 @@ def monthly_report(
     ano: int,
     mes: int,
     apenas_validadas: bool = False,
-    include_paths: bool = False,
+    include_urls: bool = False,
+    include_files: bool = False,
 ) -> dict:
     grouped = _trades_by_month(db, operator_id=operator_id)
     trades = grouped.get((ano, mes), [])
@@ -842,7 +859,6 @@ def monthly_report(
     if apenas_validadas:
         stats_closed = [t for t in closed if t.revisao_estado == TradeReviewStatus.APROVADA]
     stats_won = [t for t in stats_closed if t.estado == "GANHOU"]
-    stats_total = [t for t in trades if apenas_validadas and t.estado not in ("GANHOU", "PERDEU") is False] if False else trades
 
     resultado = sum((money(t.valor_finaneiro) for t in stats_closed), ZERO)
     taxa = round(len(stats_won) / len(stats_closed) * 100, 1) if stats_closed else 0.0
@@ -932,6 +948,57 @@ def monthly_report(
         if t.observacoes
     ]
 
+    total_fechadas = len(closed)
+    com_evidencia = len([t for t in closed if t.evidencias])
+    aprovadas = len([t for t in closed if t.revisao_estado == TradeReviewStatus.APROVADA])
+    inconsistentes = len([t for t in closed if t.revisao_estado == TradeReviewStatus.INCONSISTENTE])
+    correcoes_pedidas = len([t for t in closed if t.revisao_estado == TradeReviewStatus.CORRECAO_PEDIDA])
+    nao_revisadas = len([t for t in closed if t.revisao_estado == TradeReviewStatus.NAO_REVISADA])
+    divergencias = len([t for t in closed if t.divergencia_plano])
+
+    def pct(count: int) -> float:
+        return round(count / total_fechadas * 100, 1) if total_fechadas else 0.0
+
+    evidencia = {
+        "total_fechadas": total_fechadas,
+        "com_evidencia": com_evidencia,
+        "sem_evidencia": total_fechadas - com_evidencia,
+        "pct_com_evidencia": pct(com_evidencia),
+        "aprovadas": aprovadas,
+        "pct_aprovadas": pct(aprovadas),
+        "inconsistentes": inconsistentes,
+        "correcoes_pedidas": correcoes_pedidas,
+        "nao_revisadas": nao_revisadas,
+        "divergencias_plano": divergencias,
+    }
+
+    capturas: list[dict] = []
+    if include_urls:
+        for trade in closed:
+            if trade.estado != "PERDEU" and trade.seguiu_plano:
+                continue
+            imagens = []
+            for e in sorted(trade.evidencias, key=lambda e: e.uploaded_at):
+                imagem = {"id": e.id, "tipo": e.tipo, "filename": e.filename, "url": evidence_url(e)}
+                if include_files:
+                    imagem["file_path"] = e.file_path
+                imagens.append(imagem)
+            capturas.append(
+                {
+                    "trade_id": trade.id,
+                    "data_operacao": trade.data_operacao.isoformat(),
+                    "ativo": trade.ativo,
+                    "direcao": trade.direcao,
+                    "estado": trade.estado,
+                    "seguiu_plano": trade.seguiu_plano,
+                    "divergencia_plano": trade.divergencia_plano,
+                    "revisao_estado": trade.revisao_estado,
+                    "valor_finaneiro": float(money(trade.valor_finaneiro)) if trade.valor_finaneiro is not None else None,
+                    "sem_evidencia": not imagens,
+                    "imagens": imagens,
+                }
+            )
+
     return {
         "operator_id": operator_id,
         "operator_nome": operator_nome,
@@ -949,6 +1016,8 @@ def monthly_report(
             "risco_retorno_medio": rr_medio,
         },
         "plano": plan,
+        "evidencia": evidencia,
+        "capturas": capturas,
         "mindset": mindset_rows,
         "ativos": group_by("ativo"),
         "direcoes": group_by("direcao"),

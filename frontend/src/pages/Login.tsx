@@ -1,18 +1,17 @@
 import { type FormEvent, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { PasswordInput } from '../components/ui/common'
+import { apiErrorMessage } from '../services/api'
 
 export default function Login() {
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, error: apiError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  if (isAuthenticated) {
-    window.location.href = '/'
-    return null
-  }
+  if (isAuthenticated) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -20,8 +19,9 @@ export default function Login() {
     setSubmitting(true)
     try {
       await login(email, password)
-    } catch {
-      setError('Email ou password inválidos')
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status
+      setError(status === 401 ? 'Email ou password inválidos' : apiErrorMessage(e, 'Não foi possível iniciar sessão.'))
     } finally {
       setSubmitting(false)
     }
@@ -99,6 +99,22 @@ export default function Login() {
             outline: 'none',
           }}
         />
+        {apiError && (
+          <p
+            style={{
+              color: 'var(--warning)',
+              fontSize: '0.85rem',
+              margin: 0,
+              textAlign: 'center',
+              border: '1px solid rgba(234,179,8,0.35)',
+              background: 'rgba(234,179,8,0.08)',
+              borderRadius: 8,
+              padding: '0.6rem 0.8rem',
+            }}
+          >
+            {apiError}
+          </p>
+        )}
         {error && (
           <p style={{ color: 'var(--danger)', fontSize: '0.85rem', margin: 0 }}>
             {error}

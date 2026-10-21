@@ -49,6 +49,32 @@ def delete_user(db, user_id: int) -> None:
     from app.models.attachment import Attachment
     from app.models.notification import Notification
     from app.models.task import Task, TaskHistory, TaskReview, TaskUpdate
+    from app.models.trading import (
+        TradingAccount,
+        TradingChecklist,
+        TradingEvidence,
+        TradingMethod,
+        TradingMonth,
+        TradingReview,
+        TradingTrade,
+    )
+
+    trade_ids = [
+        t.id
+        for t in db.query(TradingTrade)
+        .filter((TradingTrade.created_by == user_id) | (TradingTrade.operator_id == user_id))
+        .all()
+    ]
+    if trade_ids:
+        db.query(TradingEvidence).filter(TradingEvidence.trade_id.in_(trade_ids)).delete(synchronize_session=False)
+        db.query(TradingReview).filter(TradingReview.trade_id.in_(trade_ids)).delete(synchronize_session=False)
+        db.query(TradingMethod).filter(TradingMethod.trade_id.in_(trade_ids)).delete(synchronize_session=False)
+        db.query(TradingTrade).filter(TradingTrade.id.in_(trade_ids)).delete(synchronize_session=False)
+    db.query(TradingChecklist).filter(TradingChecklist.operator_id == user_id).delete(synchronize_session=False)
+    db.query(TradingMonth).filter(TradingMonth.operator_id == user_id).delete(synchronize_session=False)
+    db.query(TradingAccount).filter(TradingAccount.operator_id == user_id).delete(synchronize_session=False)
+    db.query(TradingEvidence).filter(TradingEvidence.user_id == user_id).delete(synchronize_session=False)
+    db.query(TradingReview).filter(TradingReview.user_id == user_id).delete(synchronize_session=False)
 
     db.query(Notification).filter(Notification.user_id == user_id).delete()
     db.query(TaskHistory).filter(TaskHistory.user_id == user_id).update({"user_id": None})

@@ -5,8 +5,10 @@ import {
   deleteTrade,
   getMethodTemplate,
   listTrades,
+  respondReview,
   updateTrade,
 } from '../services/trading'
+import EvidenceUploader from '../components/trading/EvidenceUploader'
 import { isAdminRole } from '../types/user'
 import { useAuth } from '../hooks/useAuth'
 import Modal from '../components/ui/Modal'
@@ -33,6 +35,8 @@ import {
   MACRO_DIRECAO_LABELS,
   MACRO_VIES_LABELS,
   MINDSET_LABELS,
+  REVISAO_ESTADO_COLORS,
+  REVISAO_ESTADO_LABELS,
   REGIAO_LABELS,
   type MacroBias,
   type MacroDirection,
@@ -78,6 +82,13 @@ interface TradeForm {
   ativo: string
   direcao: TradeDirection
   estado: TradeEstado
+  preco_entrada: string
+  preco_stop: string
+  preco_alvo: string
+  preco_saida: string
+  hora_entrada: string
+  hora_saida: string
+  tamanho_lote: string
   valor_finaneiro: string
   risco_retorno: string
   seguiu_plano: boolean
@@ -97,6 +108,13 @@ function emptyForm(): TradeForm {
     ativo: '',
     direcao: 'COMPRA',
     estado: 'PENDENTE',
+    preco_entrada: '',
+    preco_stop: '',
+    preco_alvo: '',
+    preco_saida: '',
+    hora_entrada: '',
+    hora_saida: '',
+    tamanho_lote: '',
     valor_finaneiro: '',
     risco_retorno: '',
     seguiu_plano: true,
@@ -106,12 +124,28 @@ function emptyForm(): TradeForm {
   }
 }
 
+function priceToField(value: number | null): string {
+  return value !== null ? String(value) : ''
+}
+
+function timeToField(value: string | null): string {
+  if (!value) return ''
+  return value.slice(0, 16)
+}
+
 function tradeToForm(trade: Trade): TradeForm {
   return {
     data_operacao: trade.data_operacao,
     ativo: trade.ativo,
     direcao: trade.direcao,
     estado: trade.estado,
+    preco_entrada: priceToField(trade.preco_entrada),
+    preco_stop: priceToField(trade.preco_stop),
+    preco_alvo: priceToField(trade.preco_alvo),
+    preco_saida: priceToField(trade.preco_saida),
+    hora_entrada: timeToField(trade.hora_entrada),
+    hora_saida: timeToField(trade.hora_saida),
+    tamanho_lote: priceToField(trade.tamanho_lote),
     valor_finaneiro: trade.valor_finaneiro !== null ? String(trade.valor_finaneiro) : '',
     risco_retorno: trade.risco_retorno !== null ? String(trade.risco_retorno) : '',
     seguiu_plano: trade.seguiu_plano,
@@ -119,6 +153,17 @@ function tradeToForm(trade: Trade): TradeForm {
     observacoes: trade.observacoes ?? '',
     method: trade.method ? methodFrom(trade) : EMPTY_METHOD,
   }
+}
+
+function computedRiscoRetorno(form: TradeForm): number | null {
+  const entrada = Number(form.preco_entrada)
+  const stop = Number(form.preco_stop)
+  const alvo = Number(form.preco_alvo)
+  if (!form.preco_entrada || !form.preco_stop || !form.preco_alvo) return null
+  if ([entrada, stop, alvo].some((v) => Number.isNaN(v) || v <= 0)) return null
+  const risco = Math.abs(entrada - stop)
+  if (risco === 0) return null
+  return Math.round((Math.abs(alvo - entrada) / risco) * 100) / 100
 }
 
 function methodFrom(trade: Trade): MethodPayload {
@@ -129,24 +174,53 @@ function methodFrom(trade: Trade): MethodPayload {
 function validateForm(form: TradeForm): string | null {
   if (!form.data_operacao) return 'Indique a data da operação.'
   if (!form.ativo.trim()) return 'Indique o ativo.'
+  const requiredPrices: Array<[string, string]> = [
+    ['Preço de entrada', form.preco_entrada],
+    ['Stop (stop loss)', form.preco_stop],
+    ['Alvo (take profit)', form.preco_alvo],
+  ]
+  for (const [label, value] of requiredPrices) {
+    if (!value.trim()) return `${label} é obrigatório.`
+    if (Number.isNaN(Number(value)) || Number(value) <= 0) return `${label} deve ser um número positivo.`
+  }
+  const entrada = Number(form.preco_entrada)
+  const stop = Number(form.preco_stop)
+  const alvo = Number(form.preco_alvo)
+  if (form.direcao === 'COMPRA') {
+    if (stop >= entrada) return 'Numa COMPRA o stop deve ficar abaixo do preço de entrada.'
+    if (alvo <= entrada) return 'Numa COMPRA o alvo deve ficar acima do preço de entrada.'
+  } else {
+    if (stop <= entrada) return 'Numa VENDA o stop deve ficar acima do preço de entrada.'
+    if (alvo >= entrada) return 'Numa VENDA o alvo deve ficar abaixo do preço de entrada.'
+  }
   const closed = form.estado === 'GANHOU' || form.estado === 'PERDEU'
   if (closed) {
+    if (!form.preco_saida.trim() || Number.isNaN(Number(form.preco_saida)) || Number(form.preco_saida) <= 0) {
+      return 'Informe o preço de saída para fechar a operação.'
+    }
     const value = Number(form.valor_finaneiro)
     if (!form.valor_finaneiro.trim() || Number.isNaN(value) || value === 0) return 'Informe o valor financeiro da operação fechada.'
     if (form.estado === 'GANHOU' && value < 0) return 'Operações ganhas devem ter valor positivo.'
     if (form.estado === 'PERDEU' && value > 0) return 'Operações perdidas devem ter valor negativo.'
   }
-  if (form.risco_retorno.trim() && Number.isNaN(Number(form.risco_retorno))) return 'Risco:Retorno deve ser numérico (ex.: 3 para 1:3).'
   return null
 }
 
 function toPayload(form: TradeForm): TradePayload {
   const closed = form.estado === 'GANHOU' || form.estado === 'PERDEU'
+  const num = (value: string): number | null => (value.trim() && !Number.isNaN(Number(value)) ? Number(value) : null)
   return {
     data_operacao: form.data_operacao,
     ativo: form.ativo.trim(),
     direcao: form.direcao,
     estado: form.estado,
+    preco_entrada: num(form.preco_entrada),
+    preco_stop: num(form.preco_stop),
+    preco_alvo: num(form.preco_alvo),
+    preco_saida: num(form.preco_saida),
+    hora_entrada: form.hora_entrada ? `${form.hora_entrada}:00` : null,
+    hora_saida: form.hora_saida ? `${form.hora_saida}:00` : null,
+    tamanho_lote: num(form.tamanho_lote),
     valor_finaneiro: closed && form.valor_finaneiro.trim() ? Number(form.valor_finaneiro) : null,
     risco_retorno: form.risco_retorno.trim() ? Number(form.risco_retorno) : null,
     seguiu_plano: form.seguiu_plano,
@@ -309,6 +383,12 @@ export default function TradingJournal() {
   const [dayPrecheck, setDayPrecheck] = useState<{ existe: boolean; precheck_concluido: boolean }>({ existe: false, precheck_concluido: false })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+
+  const [evidenceTrade, setEvidenceTrade] = useState<Trade | null>(null)
+  const [respondTrade, setRespondTrade] = useState<Trade | null>(null)
+  const [respondText, setRespondText] = useState('')
+  const [respondError, setRespondError] = useState('')
+  const [respondSaving, setRespondSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -487,8 +567,14 @@ export default function TradingJournal() {
                 <th style={thStyle}>Ativo</th>
                 <th style={thStyle}>Direção</th>
                 <th style={thStyle}>Estado</th>
+                <th style={thStyle}>Entrada</th>
+                <th style={thStyle}>Stop</th>
+                <th style={thStyle}>Alvo</th>
+                <th style={thStyle}>Saída</th>
                 <th style={thStyle}>Valor (US$)</th>
                 <th style={thStyle}>R:R</th>
+                <th style={thStyle}>Evid.</th>
+                <th style={thStyle}>Revisão</th>
                 <th style={thStyle}>Plano</th>
                 <th style={thStyle}>Mindset</th>
                 <th style={thStyle}>Observações</th>
@@ -516,22 +602,88 @@ export default function TradingJournal() {
                       {ESTADO_LABELS[trade.estado]}
                     </span>
                   </td>
+                  <td style={tdStyle}>{trade.preco_entrada ?? '—'}</td>
+                  <td style={{ ...tdStyle, color: 'var(--danger)' }}>{trade.preco_stop ?? '—'}</td>
+                  <td style={{ ...tdStyle, color: 'var(--success)' }}>{trade.preco_alvo ?? '—'}</td>
+                  <td style={tdStyle}>{trade.preco_saida ?? '—'}</td>
                   <td style={{ ...tdStyle, color: trade.valor_finaneiro === null ? 'var(--clop-gray)' : trade.valor_finaneiro >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                     {trade.valor_finaneiro === null ? '—' : trade.valor_finaneiro.toFixed(2)}
                   </td>
                   <td style={tdStyle}>{trade.risco_retorno !== null ? `1:${trade.risco_retorno}` : '—'}</td>
+                  <td style={tdStyle}>
+                    <span style={{ display: 'inline-flex', gap: 4 }} title="Evidência de entrada / de fecho">
+                      <span
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 999,
+                          background: trade.tem_evidencia_entrada ? 'var(--success)' : 'var(--clop-gray-dark)',
+                          border: `1px solid ${trade.tem_evidencia_entrada ? 'var(--success)' : 'var(--clop-gray)'}`,
+                        }}
+                      />
+                      <span
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 999,
+                          background: trade.tem_evidencia_fecho ? 'var(--success)' : 'var(--clop-gray-dark)',
+                          border: `1px solid ${trade.tem_evidencia_fecho ? 'var(--success)' : 'var(--clop-gray)'}`,
+                        }}
+                      />
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: 999,
+                        color: REVISAO_ESTADO_COLORS[trade.revisao_estado],
+                        background: `${REVISAO_ESTADO_COLORS[trade.revisao_estado]}1f`,
+                        border: `1px solid ${REVISAO_ESTADO_COLORS[trade.revisao_estado]}55`,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {REVISAO_ESTADO_LABELS[trade.revisao_estado]}
+                    </span>
+                    {trade.divergencia_plano && (
+                      <span title="Divergência de plano marcada pelo líder" style={{ marginLeft: 4, color: 'var(--danger)', fontWeight: 700 }}>
+                        !
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...tdStyle, color: trade.seguiu_plano ? 'var(--success)' : 'var(--danger)' }}>{trade.seguiu_plano ? 'Sim' : 'Não'}</td>
                   <td style={{ ...tdStyle, color: 'var(--clop-gray)' }}>{trade.mindset ? MINDSET_LABELS[trade.mindset as Mindset] ?? trade.mindset : '—'}</td>
-                  <td style={{ ...tdStyle, color: 'var(--clop-gray)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={trade.observacoes ?? ''}>
+                  <td style={{ ...tdStyle, color: 'var(--clop-gray)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={trade.observacoes ?? ''}>
                     {trade.observacoes ?? '—'}
                   </td>
                   <td style={tdStyle}>
-                    <button
-                      onClick={() => openEdit(trade)}
-                      style={{ background: 'transparent', border: '1px solid var(--clop-card-border)', borderRadius: 6, color: 'var(--clop-gold-light)', padding: '0.25rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
-                    >
-                      Editar
-                    </button>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => openEdit(trade)}
+                        style={{ background: 'transparent', border: '1px solid var(--clop-card-border)', borderRadius: 6, color: 'var(--clop-gold-light)', padding: '0.25rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => setEvidenceTrade(trade)}
+                        style={{ background: 'transparent', border: '1px solid rgba(212,167,44,0.35)', borderRadius: 6, color: 'var(--clop-gold)', padding: '0.25rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                      >
+                        Evidências
+                      </button>
+                      {trade.revisao_estado === 'CORRECAO_PEDIDA' && (
+                        <button
+                          onClick={() => {
+                            setRespondTrade(trade)
+                            setRespondText('')
+                            setRespondError('')
+                          }}
+                          style={{ background: 'transparent', border: '1px solid var(--warning)', borderRadius: 6, color: 'var(--warning)', padding: '0.25rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                        >
+                          Responder
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -562,6 +714,41 @@ export default function TradingJournal() {
               <option value="PERDEU">{ESTADO_LABELS.PERDEU}</option>
             </select>
           </FormField>
+          <FormField label="Preço de entrada *">
+            <input type="number" step="any" style={inputStyle} value={form.preco_entrada} placeholder="ex.: 1.08450" onChange={(e) => set('preco_entrada', e.target.value)} />
+          </FormField>
+          <FormField label="Stop (stop loss) *">
+            <input type="number" step="any" style={inputStyle} value={form.preco_stop} placeholder="ex.: 1.08200" onChange={(e) => set('preco_stop', e.target.value)} />
+          </FormField>
+          <FormField label="Alvo (take profit) *">
+            <input type="number" step="any" style={inputStyle} value={form.preco_alvo} placeholder="ex.: 1.08950" onChange={(e) => set('preco_alvo', e.target.value)} />
+          </FormField>
+          <FormField label="Preço de saída (ao fechar)">
+            <input
+              type="number"
+              step="any"
+              style={inputStyle}
+              value={form.preco_saida}
+              disabled={form.estado !== 'GANHOU' && form.estado !== 'PERDEU'}
+              placeholder={form.estado === 'GANHOU' || form.estado === 'PERDEU' ? 'obrigatório' : 'preencha ao fechar'}
+              onChange={(e) => set('preco_saida', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Hora da entrada">
+            <input type="datetime-local" style={inputStyle} value={form.hora_entrada} onChange={(e) => set('hora_entrada', e.target.value)} />
+          </FormField>
+          <FormField label="Hora da saída">
+            <input
+              type="datetime-local"
+              style={inputStyle}
+              value={form.hora_saida}
+              disabled={form.estado !== 'GANHOU' && form.estado !== 'PERDEU'}
+              onChange={(e) => set('hora_saida', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Tamanho do lote (opcional)">
+            <input type="number" step="any" min="0" style={inputStyle} value={form.tamanho_lote} placeholder="ex.: 0.10" onChange={(e) => set('tamanho_lote', e.target.value)} />
+          </FormField>
           <FormField label="Valor financeiro (US$)">
             <input
               type="number"
@@ -573,8 +760,18 @@ export default function TradingJournal() {
               onChange={(e) => set('valor_finaneiro', e.target.value)}
             />
           </FormField>
-          <FormField label="Risco:Retorno (N de 1:N)">
-            <input type="number" step="0.1" min="0" style={inputStyle} value={form.risco_retorno} placeholder="ex.: 3 → 1:3" onChange={(e) => set('risco_retorno', e.target.value)} />
+          <FormField label="Risco:Retorno (calculado automaticamente)">
+            <input
+              type="text"
+              style={{ ...inputStyle, background: 'transparent', color: 'var(--clop-gold-light)', fontWeight: 700 }}
+              value={(() => {
+                const rr = computedRiscoRetorno(form)
+                if (rr !== null) return `1:${rr}`
+                return form.risco_retorno.trim() ? `1:${form.risco_retorno}` : '— preencha entrada, stop e alvo'
+              })()}
+              readOnly
+              title="Calculado a partir da entrada, do stop e do alvo. O resultado real vem do preço de saída."
+            />
           </FormField>
           <FormField label="Seguiu o plano?">
             <select style={selectStyle} value={form.seguiu_plano ? 'S' : 'N'} onChange={(e) => set('seguiu_plano', e.target.value === 'S')}>
@@ -609,6 +806,11 @@ export default function TradingJournal() {
             Aviso: o checklist pré-operacional (secções 01 a 03) deste dia ainda não está concluído. Conclua-o em “Checklist do Dia” antes de registar operações.
           </p>
         )}
+
+        <p style={{ color: 'var(--clop-gray)', fontSize: '0.75rem', margin: '0.6rem 0 0' }}>
+          Regras: sem a captura de entrada a operação não passa de Pendente para Em andamento; sem a captura de fecho e o preço de saída não
+          passa para Ganhou/Perdeu. As evidências são anexadas na linha da operação (botão “Evidências”).
+        </p>
 
         <div style={{ marginTop: '0.9rem', borderTop: '1px solid var(--clop-card-border)', paddingTop: '0.7rem' }}>
           <button
@@ -645,6 +847,97 @@ export default function TradingJournal() {
             </PrimaryButton>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={evidenceTrade !== null}
+        title={`Evidências · ${evidenceTrade?.ativo ?? ''}`}
+        onClose={() => setEvidenceTrade(null)}
+        width={720}
+      >
+        {evidenceTrade && (
+          <div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--clop-gray)', margin: '0 0 0.7rem' }}>
+              {evidenceTrade.data_operacao} · {DIRECAO_LABELS[evidenceTrade.direcao]} · {ESTADO_LABELS[evidenceTrade.estado]} · operação #
+              {evidenceTrade.id}
+            </p>
+            <EvidenceUploader
+              tradeId={evidenceTrade.id}
+              evidencias={evidenceTrade.evidencias}
+              onChanged={(evidence) =>
+                setEvidenceTrade((current) => (current ? { ...current, evidencias: [...current.evidencias, evidence] } : current))
+              }
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.9rem' }}>
+              <GhostButton onClick={() => setEvidenceTrade(null)}>Fechar</GhostButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={respondTrade !== null} title="Responder à revisão do líder" onClose={() => setRespondTrade(null)} width={560}>
+        {respondTrade && (
+          <div>
+            {respondTrade.revisao_comentario && (
+              <div
+                style={{
+                  border: '1px solid rgba(212,167,44,0.2)',
+                  borderRadius: 8,
+                  padding: '0.6rem 0.8rem',
+                  background: 'rgba(212,167,44,0.05)',
+                  marginBottom: '0.8rem',
+                }}
+              >
+                <p style={{ fontSize: '0.7rem', color: 'var(--clop-gold-light)', margin: '0 0 0.2rem', textTransform: 'uppercase' }}>
+                  Pedido de {respondTrade.revisao_por_nome ?? 'líder'}
+                </p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--clop-white)', margin: 0 }}>{respondTrade.revisao_comentario}</p>
+              </div>
+            )}
+            <FormField label="A sua resposta (explique ou anexe nova evidência)">
+              <textarea
+                style={{ ...inputStyle, width: '100%', minHeight: 90, resize: 'vertical' }}
+                value={respondText}
+                maxLength={2000}
+                placeholder="Descreva o que aconteceu na operação…"
+                onChange={(e) => setRespondText(e.target.value)}
+              />
+            </FormField>
+            <p style={{ fontSize: '0.72rem', color: 'var(--clop-gray)', margin: '0.4rem 0 0' }}>
+              Pode anexar evidências pelo botão “Evidências” na linha da operação. Após a resposta, a operação volta para a fila de revisão do líder.
+            </p>
+            {respondError && <p style={{ color: 'var(--danger)', fontSize: '0.8rem', margin: '0.5rem 0 0' }}>{respondError}</p>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem', marginTop: '1rem' }}>
+              <GhostButton onClick={() => setRespondTrade(null)} disabled={respondSaving}>
+                Cancelar
+              </GhostButton>
+              <PrimaryButton
+                onClick={() => {
+                  if (!respondTrade) return
+                  if (respondText.trim().length < 3) {
+                    setRespondError('Escreva uma resposta com pelo menos 3 caracteres.')
+                    return
+                  }
+                  setRespondSaving(true)
+                  setRespondError('')
+                  respondReview(respondTrade.id, respondText.trim())
+                    .then(() => {
+                      setRespondTrade(null)
+                      void load()
+                    })
+                    .catch((e: unknown) => {
+                      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+                      setRespondError(typeof detail === 'string' ? detail : 'Erro ao enviar a resposta.')
+                    })
+                    .finally(() => setRespondSaving(false))
+                }}
+                disabled={respondSaving}
+              >
+                {respondSaving ? 'A enviar…' : 'Enviar resposta'}
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

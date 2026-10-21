@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     TRADE_EVIDENCE_MAX_MB: int = 5
     TRADE_EVIDENCE_LATE_DAYS: int = 1
+    TRADING_REQUIRE_EVIDENCE: bool = True
+    TRADING_REQUIRE_PRECO_SAIDA: bool = True
+    TRADING_REQUIRE_PRECOS: bool = True
 
     @property
     def cors_origins_list(self) -> list[str]:

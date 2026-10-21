@@ -1,5 +1,5 @@
-import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
+import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 
 export interface TokenPair {
   access_token: string
@@ -10,6 +10,8 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean }
 
 const TOKEN_KEY = 'clop_access_token'
 const REFRESH_KEY = 'clop_refresh_token'
+
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 export const tokenStorage = {
   getAccess(): string | null {
@@ -29,7 +31,7 @@ export const tokenStorage = {
 }
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -37,7 +39,7 @@ const api = axios.create({
 })
 
 const API_ORIGIN = (() => {
-  const base = import.meta.env.VITE_API_URL || '/api'
+  const base = API_BASE_URL
   return /^https?:\/\//i.test(base) ? base.replace(/\/api\/?$/, '') : ''
 })()
 
@@ -50,6 +52,29 @@ export function mediaUrl(path?: string | null): string {
   return value
 }
 
+export const NON_JSON_RESPONSE_MESSAGE =
+  'A API não devolveu JSON. Verifique a configuração de VITE_API_URL em produção ou o proxy /api.'
+
+function isNonJsonResponse(response: AxiosResponse): boolean {
+  const data: unknown = response.data
+  if (typeof data !== 'string') return false
+  const contentType = String(response.headers?.['content-type'] ?? '')
+  if (contentType.includes('text/html')) return true
+  return data.trimStart().startsWith('<')
+}
+
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AxiosError) {
+    const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+    if (typeof detail === 'string' && detail) return detail
+    if (error.code === 'ERR_BAD_RESPONSE' && error.message === NON_JSON_RESPONSE_MESSAGE) return error.message
+    if (error.code === 'ECONNABORTED') return 'O servidor demorou demasiado a responder.'
+    if (!error.response) return 'Não foi possível contactar o servidor.'
+  }
+  if (error instanceof Error && error.message) return error.message
+  return fallback
+}
+
 let refreshPromise: Promise<string> | null = null
 
 async function performRefresh(): Promise<string> {
@@ -60,6 +85,9 @@ async function performRefresh(): Promise<string> {
   const { data } = await axios.post<TokenPair>(`${API_ORIGIN}/api/auth/refresh`, {
     refresh_token: refreshToken,
   })
+  if (!data?.access_token || !data?.refresh_token) {
+    throw new Error('Resposta de refresh inválida')
+  }
   tokenStorage.set(data.access_token, data.refresh_token)
   return data.access_token
 }
@@ -73,7 +101,14 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (isNonJsonResponse(response)) {
+      return Promise.reject(
+        new AxiosError(NON_JSON_RESPONSE_MESSAGE, 'ERR_BAD_RESPONSE', response.config, response.request, response),
+      )
+    }
+    return response
+  },
   async (error: AxiosError) => {
     const config = error.config as RetriableConfig | undefined
     const isAuthError = error.response?.status === 401

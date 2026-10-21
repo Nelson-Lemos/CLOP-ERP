@@ -80,6 +80,28 @@ export interface Counts {
   overdue: number
 }
 
+export const EMPTY_COUNTS: Counts = {
+  total: 0,
+  completed: 0,
+  in_progress: 0,
+  pending: 0,
+  submitted: 0,
+  rejected: 0,
+  overdue: 0,
+}
+
+export const EMPTY_METRICS: ProductivityMetrics = {
+  total_tasks: 0,
+  completed_tasks: 0,
+  pending_tasks: 0,
+  overdue_tasks: 0,
+  rejected_tasks: 0,
+  completion_rate: 0,
+  on_time_rate: 0,
+  average_completion_time: 0,
+  weighted_score: 0,
+}
+
 export interface CompanyProductivityResult {
   company: ProductivityMetrics
   departments: { id: number; nome: string; completion_rate: number; overdue_tasks: number; total_tasks: number }[]

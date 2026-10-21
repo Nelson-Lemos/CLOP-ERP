@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { Department } from '../types/department'
 import type { ReportData } from '../types/report'
-import { getCompanyReport, getDepartmentReport, getPeriodReport, reportPdfUrl } from '../services/reports'
+import { EMPTY_METRICS } from '../types/report'
+import { getCompanyReport, getDepartmentReport, getPeriodReport, downloadPdfReport } from '../services/reports'
 import { listDepartments } from '../services/departments'
+import { apiErrorMessage } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 import { isAdminRole } from '../types/user'
 import StatusBadge from '../components/ui/StatusBadge'
@@ -24,6 +26,7 @@ export default function Reports() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [report, setReport] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
   const [scope, setScope] = useState<'company' | 'department' | 'period'>('company')
   const [departmentId, setDepartmentId] = useState('')
@@ -61,6 +64,26 @@ export default function Reports() {
   }
 
   const pdfPath = scope === 'department' && departmentId ? `/reports/department/${departmentId}/pdf` : scope === 'company' ? '/reports/company/pdf' : null
+  const pdfFilename =
+    scope === 'department' && departmentId
+      ? `relatorio_departamento_${departmentId}.pdf`
+      : scope === 'company'
+        ? 'relatorio_empresa.pdf'
+        : 'relatorio.pdf'
+  const metrics = report?.metrics ?? EMPTY_METRICS
+
+  const downloadPdf = async () => {
+    if (!pdfPath) return
+    setDownloading(true)
+    setError('')
+    try {
+      await downloadPdfReport(pdfPath, pdfFilename, { start: start || undefined, end: end || undefined })
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Não foi possível gerar o PDF.'))
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div>
@@ -71,11 +94,11 @@ export default function Reports() {
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
             <GhostButton
               onClick={() => {
-                if (pdfPath) window.open(reportPdfUrl(pdfPath, { start: start || undefined, end: end || undefined }), '_blank')
+                void downloadPdf()
               }}
-              disabled={!pdfPath || loading}
+              disabled={!pdfPath || loading || downloading}
             >
-              Baixar PDF
+              {downloading ? 'A gerar PDF…' : 'Baixar PDF'}
             </GhostButton>
             <PrimaryButton onClick={() => void run()} disabled={loading}>
               {loading ? 'A gerar…' : 'Gerar relatório'}
@@ -159,14 +182,14 @@ export default function Reports() {
               </thead>
               <tbody>
                 <tr>
-                  <td style={tdStyle}>{report.metrics.total_tasks}</td>
-                  <td style={{ ...tdStyle, color: 'var(--success)' }}>{report.metrics.completed_tasks}</td>
-                  <td style={tdStyle}>{report.metrics.pending_tasks}</td>
-                  <td style={{ ...tdStyle, color: 'var(--danger)' }}>{report.metrics.overdue_tasks}</td>
-                  <td style={tdStyle}>{report.metrics.rejected_tasks}</td>
-                  <td style={{ ...tdStyle, color: 'var(--clop-gold-light)', fontWeight: 600 }}>{report.metrics.completion_rate}%</td>
-                  <td style={tdStyle}>{report.metrics.on_time_rate}%</td>
-                  <td style={tdStyle}>{report.metrics.weighted_score}%</td>
+                  <td style={tdStyle}>{metrics.total_tasks}</td>
+                  <td style={{ ...tdStyle, color: 'var(--success)' }}>{metrics.completed_tasks}</td>
+                  <td style={tdStyle}>{metrics.pending_tasks}</td>
+                  <td style={{ ...tdStyle, color: 'var(--danger)' }}>{metrics.overdue_tasks}</td>
+                  <td style={tdStyle}>{metrics.rejected_tasks}</td>
+                  <td style={{ ...tdStyle, color: 'var(--clop-gold-light)', fontWeight: 600 }}>{metrics.completion_rate}%</td>
+                  <td style={tdStyle}>{metrics.on_time_rate}%</td>
+                  <td style={tdStyle}>{metrics.weighted_score}%</td>
                 </tr>
               </tbody>
             </table>
